@@ -1,4 +1,5 @@
 # BMad / agent tooling (local only)
 _bmad/
+_bmad-output/
 .agents/
 .opencode/
