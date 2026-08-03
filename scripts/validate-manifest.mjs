@@ -16,6 +16,12 @@ if (!manifest.oauth2?.scopes?.includes('https://www.googleapis.com/auth/gmail.se
   );
 }
 
+if (!manifest.permissions?.includes('identity')) {
+  failures.push(
+    `permissions must include "identity" for chrome.identity.getAuthToken, got: ${JSON.stringify(manifest.permissions)}`,
+  );
+}
+
 const requiredHosts = [
   'https://www.linkedin.com/*',
   'https://gmail.googleapis.com/*',

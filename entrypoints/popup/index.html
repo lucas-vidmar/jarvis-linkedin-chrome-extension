@@ -2,10 +2,161 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>Jarvis Sync</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Connect Google — Jarvis Sync</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --brand-indigo: #444ce7;
+        --brand-indigo-dark: #3538cd;
+        --ink: #1f2430;
+        --muted: #5b6270;
+        --error: #b42318;
+        --surface: #ffffff;
+        --focus-ring: #444ce7;
+        --success-bg: #f0fdf4;
+        --success-border: #86efac;
+        --success-ink: #166534;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        width: 360px;
+        font-family: 'Montserrat', system-ui, -apple-system, 'Segoe UI', sans-serif;
+        font-size: 14px;
+        font-weight: 600;
+        line-height: 1.5;
+        color: var(--ink);
+        background: var(--surface);
+      }
+
+      .connect-screen {
+        padding: 20px;
+      }
+
+      h1 {
+        margin: 0 0 8px;
+        font-size: 16px;
+        font-weight: 700;
+        line-height: 1.4;
+      }
+
+      p {
+        margin: 0;
+      }
+
+      .helper {
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--muted);
+      }
+
+      .helper + .helper {
+        margin-top: 8px;
+      }
+
+      .connect-button {
+        display: block;
+        width: 100%;
+        margin: 16px 0 12px;
+        padding: 10px 16px;
+        font: inherit;
+        font-size: 14px;
+        font-weight: 600;
+        color: #ffffff;
+        background: var(--brand-indigo);
+        border: 1px solid transparent;
+        border-radius: 6px;
+        cursor: pointer;
+      }
+
+      .connect-button:hover:not(:disabled) {
+        background: var(--brand-indigo-dark);
+      }
+
+      .connect-button:focus-visible {
+        outline: 2px solid var(--focus-ring);
+        outline-offset: 2px;
+      }
+
+      .connect-button:disabled {
+        opacity: 0.6;
+        cursor: default;
+      }
+
+      .status {
+        margin-bottom: 12px;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--error);
+      }
+
+      .status.progress {
+        color: var(--muted);
+      }
+
+      .connected {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 14px 16px;
+        border: 1px solid var(--success-border);
+        border-radius: 6px;
+        background: var(--success-bg);
+        color: var(--success-ink);
+        font-size: 14px;
+      }
+
+      .connected::before {
+        content: '';
+        flex: none;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #22c55e;
+      }
+
+      [hidden] {
+        display: none !important;
+      }
+    </style>
   </head>
   <body>
-    <p>Jarvis Sync</p>
+    <main class="connect-screen">
+      <section id="connect-view">
+        <h1>
+          Sync LinkedIn conversations to Zoho via Jarvis, using your Google Workspace account
+        </h1>
+        <p class="helper">
+          Jarvis uses your Google account to send sync emails on your behalf.
+        </p>
+        <button id="connect-button" type="button" class="connect-button">
+          Connect with Google
+        </button>
+        <p id="status" class="status" role="status" aria-live="polite" hidden></p>
+        <p class="helper">
+          You can still sync — we'll open a draft for you to send.
+        </p>
+      </section>
+
+      <section id="connected-view" hidden tabindex="-1">
+        <p class="connected">Connected with Google</p>
+      </section>
+    </main>
     <script type="module" src="./main.ts"></script>
   </body>
 </html>

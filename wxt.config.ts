@@ -1,6 +1,8 @@
 import { defineConfig } from 'wxt';
 
 export default defineConfig({
+  srcDir: 'src',
+  entrypointsDir: '../entrypoints',
   manifest: {
     name: 'Jarvis Sync',
     permissions: ['identity'],
