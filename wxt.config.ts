@@ -8,7 +8,7 @@ export default defineConfig({
     permissions: ['identity'],
     oauth2: {
       scopes: ['https://www.googleapis.com/auth/gmail.send'],
-      client_id: 'YOUR_OAUTH_CLIENT_ID.apps.googleusercontent.com',
+      client_id: '98831444529-vea88qlt53hm8m53mgnt67msqgb8gcul.apps.googleusercontent.com',
     },
     host_permissions: [
       'https://www.linkedin.com/*',
