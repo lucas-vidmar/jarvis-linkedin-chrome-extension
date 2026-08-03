@@ -3,3 +3,16 @@ _bmad/
 _bmad-output/
 .agents/
 .opencode/
+
+# Dependencies
+node_modules/
+
+# WXT build output
+.output/
+.wxt/
+
+# Env & local files
+.env*
+!.env.example
+.DS_Store
+*.log

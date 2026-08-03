@@ -1,0 +1,21 @@
+{
+  "name": "linkedin-jarvis-extension",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "wxt",
+    "build": "wxt build",
+    "zip": "wxt zip",
+    "typecheck": "tsc --noEmit",
+    "validate:manifest": "node scripts/validate-manifest.mjs"
+  },
+  "devDependencies": {
+    "@types/chrome": "0.2.5",
+    "typescript": "5.9.3",
+    "wxt": "0.21.3"
+  }
+}
