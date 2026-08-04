@@ -18,6 +18,28 @@ function authErrorReply(
   };
 }
 
+async function disconnectGoogle(): Promise<boolean> {
+  let token: string | undefined;
+  try {
+    const result = await chrome.identity.getAuthToken({
+      interactive: false,
+      scopes: [GMAIL_SEND_SCOPE],
+    });
+    token = result.token;
+  } catch {
+    // No cached token — the desired end state already holds. Chrome gives no
+    // reliable error signal to distinguish "no cached token" from a transient
+    // error, so this is treated as an idempotent success (the same semantic
+    // GET_AUTH_STATUS uses for `connected: false`).
+    return true;
+  }
+
+  if (token) {
+    await chrome.identity.removeCachedAuthToken({ token });
+  }
+  return true;
+}
+
 export default defineBackground(() => {
   chrome.runtime.onMessage.addListener(
     (
@@ -51,12 +73,19 @@ export default defineBackground(() => {
       if (message?.type === 'GET_AUTH_STATUS') {
         chrome.identity
           .getAuthToken({ interactive: false, scopes: [GMAIL_SEND_SCOPE] })
-          .then(() => {
+          .then(async () => {
+            let email: string | undefined;
+            try {
+              const profile = await chrome.identity.getProfileUserInfo();
+              email = profile.email || undefined;
+            } catch {
+              email = undefined;
+            }
             safeReply({
               type: 'GET_AUTH_STATUS',
               requestId: message.requestId,
               ok: true,
-              data: { connected: true },
+              data: { connected: true, email },
             });
           })
           .catch(() => {
@@ -66,6 +95,28 @@ export default defineBackground(() => {
               ok: true,
               data: { connected: false },
             });
+          });
+        return true;
+      }
+
+      if (message?.type === 'DISCONNECT_GOOGLE') {
+        disconnectGoogle()
+          .then(() => {
+            safeReply({
+              type: 'DISCONNECT_GOOGLE',
+              requestId: message.requestId,
+              ok: true,
+              data: { disconnected: true },
+            });
+          })
+          .catch(() => {
+            safeReply(
+              authErrorReply(
+                'DISCONNECT_GOOGLE',
+                message.requestId,
+                'Could not disconnect. Please try again.',
+              ),
+            );
           });
         return true;
       }

@@ -130,6 +130,54 @@
         background: #22c55e;
       }
 
+      .connected-account {
+        margin-top: 12px;
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--muted);
+      }
+
+      .disconnect-button {
+        display: block;
+        width: 100%;
+        margin: 16px 0 12px;
+        padding: 10px 16px;
+        font: inherit;
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--error);
+        background: var(--surface);
+        border: 1px solid var(--error);
+        border-radius: 6px;
+        cursor: pointer;
+      }
+
+      .disconnect-button:hover:not(:disabled) {
+        background: #fef3f2;
+      }
+
+      .disconnect-button:focus-visible {
+        outline: 2px solid var(--focus-ring);
+        outline-offset: 2px;
+      }
+
+      .disconnect-button:disabled {
+        opacity: 0.6;
+        cursor: default;
+      }
+
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+        border: 0;
+      }
+
       [hidden] {
         display: none !important;
       }
@@ -155,8 +203,14 @@
 
       <section id="connected-view" hidden tabindex="-1">
         <p class="connected">Connected with Google</p>
+        <p id="connected-account" class="connected-account" hidden></p>
+        <button id="disconnect-button" type="button" class="disconnect-button">
+          Disconnect
+        </button>
+        <p id="disconnect-status" class="status" hidden></p>
       </section>
     </main>
+    <p id="announce" class="sr-only" role="status"></p>
     <script type="module" src="./main.ts"></script>
   </body>
 </html>
