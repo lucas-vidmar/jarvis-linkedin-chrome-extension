@@ -18,6 +18,16 @@ export const SELECTORS = {
     '.msg-s-message-list__event',
     '[data-msg-id]',
   ],
+  messageText: [
+    '[data-test-id="msg-message-content"]',
+    '.msg-s-message-list__event__content',
+  ],
+  messageTimestamp: ['time[datetime]'],
+  selfMessageMarkers: [
+    '.msg-s-message-list__event--out',
+    '[class*="--out"]',
+    '[class*="--self"]',
+  ],
 } as const;
 
 const RESERVED_THREAD_SEGMENTS = new Set(['new', 'list', 'archive', 'index']);

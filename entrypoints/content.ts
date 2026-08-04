@@ -20,7 +20,9 @@ import {
   openScopeDropdown,
 } from '@/content/scope-dropdown';
 import { defaultScope } from '@/shared/scopes';
-import { setPendingScope } from '@/content/sync-state';
+import { composeJarvisEnvelope } from '@/shared/composer';
+import { setPendingScope, setPendingEnvelope } from '@/content/sync-state';
+import { extractMessages } from '@/content/extract-messages';
 
 const OBSERVER_DEBOUNCE_MS = 250;
 const OBSERVER_MAX_WAIT_MS = 750;
@@ -42,7 +44,11 @@ function detectionKeyFor(pathname: string, contactUrl: string): string {
   return `${pathname}:${contactUrl}`;
 }
 
-function openDropdownForButton(button: HTMLElement, threadRoot: HTMLElement): void {
+function openDropdownForButton(
+  button: HTMLElement,
+  threadRoot: HTMLElement,
+  contact: { contactName: string; contactUrl: string },
+): void {
   const messageCount = countVisibleMessages(threadRoot);
   openScopeDropdown({
     anchor: button,
@@ -50,7 +56,16 @@ function openDropdownForButton(button: HTMLElement, threadRoot: HTMLElement): vo
     selectedScope: defaultScope(false),
     messageCount,
     onSync: (scope) => {
+      const messages = extractMessages(threadRoot, contact);
+      const envelope = composeJarvisEnvelope({
+        contactName: contact.contactName,
+        contactUrl: contact.contactUrl,
+        scope,
+        syncedAt: new Date(),
+        messages,
+      });
       setPendingScope(scope);
+      setPendingEnvelope(envelope);
       closeScopeDropdown();
     },
     onCancel: () => {
@@ -70,7 +85,7 @@ function mountButton(
     }
     const threadRoot = findThreadRoot(document);
     if (threadRoot) {
-      openDropdownForButton(button, threadRoot);
+      openDropdownForButton(button, threadRoot, contact);
     }
   });
 }
@@ -86,6 +101,7 @@ function unmountAndReset(): void {
   }
   closeScopeDropdown();
   setPendingScope(null);
+  setPendingEnvelope(null);
   unmountSyncButton();
   mountedKey = null;
   stableSignature = null;
