@@ -13,6 +13,14 @@ import {
   mountSyncButton,
   unmountSyncButton,
 } from '@/content/sync-button';
+import { countVisibleMessages } from '@/content/message-counter';
+import {
+  closeScopeDropdown,
+  isScopeDropdownOpen,
+  openScopeDropdown,
+} from '@/content/scope-dropdown';
+import { defaultScope } from '@/shared/scopes';
+import { setPendingScope } from '@/content/sync-state';
 
 const OBSERVER_DEBOUNCE_MS = 250;
 const OBSERVER_MAX_WAIT_MS = 750;
@@ -34,6 +42,39 @@ function detectionKeyFor(pathname: string, contactUrl: string): string {
   return `${pathname}:${contactUrl}`;
 }
 
+function openDropdownForButton(button: HTMLElement, threadRoot: HTMLElement): void {
+  const messageCount = countVisibleMessages(threadRoot);
+  openScopeDropdown({
+    anchor: button,
+    threadRoot,
+    selectedScope: defaultScope(false),
+    messageCount,
+    onSync: (scope) => {
+      setPendingScope(scope);
+      closeScopeDropdown();
+    },
+    onCancel: () => {
+      closeScopeDropdown();
+    },
+  });
+}
+
+function mountButton(
+  root: HTMLElement,
+  contact: { contactName: string; contactUrl: string },
+): void {
+  mountSyncButton(root, contact, (button) => {
+    if (isScopeDropdownOpen()) {
+      closeScopeDropdown();
+      return;
+    }
+    const threadRoot = findThreadRoot(document);
+    if (threadRoot) {
+      openDropdownForButton(button, threadRoot);
+    }
+  });
+}
+
 function unmountAndReset(): void {
   if (debounceTimer !== undefined) {
     clearTimeout(debounceTimer);
@@ -43,6 +84,8 @@ function unmountAndReset(): void {
     clearTimeout(maxWaitTimer);
     maxWaitTimer = undefined;
   }
+  closeScopeDropdown();
+  setPendingScope(null);
   unmountSyncButton();
   mountedKey = null;
   stableSignature = null;
@@ -82,7 +125,7 @@ function applyDetection(): void {
       if (sig !== null && stableSignature !== null && sig === stableSignature) {
         consecutiveMisses = 0;
         if (!hasSyncButton()) {
-          mountSyncButton(root, detection.contact);
+          mountButton(root, detection.contact);
         }
         return;
       }
@@ -144,7 +187,7 @@ function applyDetection(): void {
       unmountSyncButton();
       const mountRoot = findThreadRoot(document);
       if (mountRoot) {
-        mountSyncButton(mountRoot, detection.contact);
+        mountButton(mountRoot, detection.contact);
         mountedKey = key;
       }
     }

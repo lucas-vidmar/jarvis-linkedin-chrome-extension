@@ -14,6 +14,10 @@ export const SELECTORS = {
   actionRowTargets: [
     '.msg-title-bar__title-bar-title',
   ],
+  messageRows: [
+    '.msg-s-message-list__event',
+    '[data-msg-id]',
+  ],
 } as const;
 
 const RESERVED_THREAD_SEGMENTS = new Set(['new', 'list', 'archive', 'index']);
@@ -57,7 +61,7 @@ export function isConversationThread(url: string): boolean {
   return true;
 }
 
-function isVisible(element: Element): boolean {
+export function isVisible(element: Element): boolean {
   if (element.getAttribute('aria-hidden') === 'true') return false;
   let node: Element | null = element;
   while (node) {

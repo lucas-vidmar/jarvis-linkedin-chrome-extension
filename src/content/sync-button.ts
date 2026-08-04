@@ -85,7 +85,11 @@ function createIcon(): SVGSVGElement {
   return svg;
 }
 
-export function mountSyncButton(root: HTMLElement, contact: ContactRef): void {
+export function mountSyncButton(
+  root: HTMLElement,
+  contact: ContactRef,
+  onSyncClick?: (button: HTMLButtonElement) => void,
+): void {
   if (document.querySelector(SYNC_BUTTON_SELECTOR)) return;
   const target = findActionRow(root);
   if (!target) return;
@@ -94,9 +98,14 @@ export function mountSyncButton(root: HTMLElement, contact: ContactRef): void {
   button.type = 'button';
   button.setAttribute('data-jarvis-sync-button', '');
   button.setAttribute('aria-label', SYNC_BUTTON_LABEL);
+  button.setAttribute('aria-haspopup', 'dialog');
+  button.setAttribute('aria-expanded', 'false');
   button.className = 'jarvis-sync-button';
   button.appendChild(createIcon());
   button.appendChild(document.createTextNode('Sync'));
+  if (onSyncClick) {
+    button.addEventListener('click', () => onSyncClick(button));
+  }
   target.appendChild(button);
   mountedButton = button;
 }
