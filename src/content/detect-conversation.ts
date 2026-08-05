@@ -14,19 +14,19 @@ export const SELECTORS = {
   actionRowTargets: [
     '.msg-title-bar__title-bar-title',
   ],
-  messageRows: [
+  messageDayGroups: [
     '.msg-s-message-list__event',
-    '[data-msg-id]',
+  ],
+  messageDayHeader: ['time.msg-s-message-list__time-heading'],
+  messageRows: [
+    '.msg-s-event-listitem',
   ],
   messageText: [
-    '[data-test-id="msg-message-content"]',
-    '.msg-s-message-list__event__content',
+    'p.msg-s-event-listitem__body',
   ],
-  messageTimestamp: ['time[datetime]'],
-  selfMessageMarkers: [
-    '.msg-s-message-list__event--out',
-    '[class*="--out"]',
-    '[class*="--self"]',
+  messageTimestamp: ['time.msg-s-message-group__timestamp'],
+  contactMessageMarkers: [
+    '.msg-s-event-listitem--other',
   ],
 } as const;
 
