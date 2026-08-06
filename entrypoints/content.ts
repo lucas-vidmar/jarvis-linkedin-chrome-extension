@@ -66,6 +66,7 @@ function openDropdownForButton(
       });
       setPendingScope(scope);
       setPendingEnvelope(envelope);
+      console.log('[jarvis-sync] composed envelope:', { ...envelope, body: envelope.body });
       closeScopeDropdown();
     },
     onCancel: () => {
