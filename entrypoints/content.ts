@@ -23,6 +23,8 @@ import { defaultScope } from '@/shared/scopes';
 import { composeJarvisEnvelope } from '@/shared/composer';
 import { setPendingScope, setPendingEnvelope } from '@/content/sync-state';
 import { extractMessages } from '@/content/extract-messages';
+import { sendSyncEmail } from '@/content/send-sync';
+import { showSyncError, showSyncSuccess } from '@/content/sync-notice';
 
 const OBSERVER_DEBOUNCE_MS = 250;
 const OBSERVER_MAX_WAIT_MS = 750;
@@ -42,6 +44,14 @@ let lastPathname: string | null = null;
 
 function detectionKeyFor(pathname: string, contactUrl: string): string {
   return `${pathname}:${contactUrl}`;
+}
+
+function isCurrentThread(contactUrl: string): boolean {
+  if (!isConversationThread(document.location.href)) return false;
+  const root = findThreadRoot(document);
+  if (!root) return false;
+  const detection = detectConversation(document);
+  return detection.kind === 'conversation' && detection.contact.contactUrl === contactUrl;
 }
 
 function openDropdownForButton(
@@ -66,8 +76,19 @@ function openDropdownForButton(
       });
       setPendingScope(scope);
       setPendingEnvelope(envelope);
-      console.log('[jarvis-sync] composed envelope:', { ...envelope, body: envelope.body });
       closeScopeDropdown();
+      const syncThreadUrl = contact.contactUrl;
+      sendSyncEmail({ contactUrl: syncThreadUrl, envelope })
+        .then((result) => {
+          if (!isCurrentThread(syncThreadUrl)) return;
+          console.log('[jarvis-sync] sent:', result.messageId);
+          showSyncSuccess('Synced to Zoho.');
+        })
+        .catch((error: { code?: string; message?: string }) => {
+          if (!isCurrentThread(syncThreadUrl)) return;
+          console.log('[jarvis-sync] send failed:', error?.code ?? 'SEND_FAILED');
+          showSyncError(error?.message ?? 'Could not sync. Try again.');
+        });
     },
     onCancel: () => {
       closeScopeDropdown();

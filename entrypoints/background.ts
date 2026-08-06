@@ -3,7 +3,14 @@ import {
   GMAIL_SEND_SCOPE,
   type PopupReply,
   type PopupRequest,
+  type SyncEmailReply,
 } from '@/shared/messages';
+
+const GMAIL_SEND_URL = 'https://gmail.googleapis.com/gmail/v1/users/me/messages/send';
+const GMAIL_SEND_TIMEOUT_MS = 30_000;
+
+const inFlightByContact = new Set<string>();
+const inFlightSyncIds = new Set<string>();
 
 function authErrorReply(
   type: PopupRequest['type'],
@@ -16,6 +23,154 @@ function authErrorReply(
     ok: false,
     error: { code: 'AUTH_FAILED', message, retryable: true },
   };
+}
+
+function syncErrorReply(
+  requestId: string,
+  error: { code: string; message: string; retryable: boolean },
+): SyncEmailReply {
+  return { type: 'SEND_SYNC_EMAIL', requestId, ok: false, error };
+}
+
+function toBase64Url(bytes: Uint8Array): string {
+  let binary = '';
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary)
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+
+function sanitizeHeaderValue(value: string): string {
+  return value.replace(/[\r\n]+/g, ' ').trim();
+}
+
+function buildRawMessage(envelope: { to: string; subject: string; body: string }): string {
+  const headers = [
+    `To: ${sanitizeHeaderValue(envelope.to)}`,
+    `Subject: ${sanitizeHeaderValue(envelope.subject)}`,
+    `Date: ${new Date().toUTCString()}`,
+    'MIME-Version: 1.0',
+    'Content-Type: text/plain; charset=UTF-8',
+  ].join('\r\n');
+  const raw = `${headers}\r\n\r\n${envelope.body.replace(/\r?\n/g, '\r\n')}`;
+  return toBase64Url(new TextEncoder().encode(raw));
+}
+
+function classifySendError(status: number): { code: string; message: string; retryable: boolean } {
+  if (status === 401 || status === 403) {
+    return { code: 'AUTH_FAILED', message: 'Your Google session expired. Reconnect to sync.', retryable: true };
+  }
+  if (status === 408 || status === 409 || status === 412 || status === 413 || status === 429) {
+    return { code: 'SEND_FAILED', message: 'Gmail could not send the message. Try again shortly.', retryable: true };
+  }
+  if (status >= 500) {
+    return { code: 'SEND_FAILED', message: 'Gmail could not send the message.', retryable: true };
+  }
+  return { code: 'SEND_FAILED', message: 'The message could not be sent.', retryable: false };
+}
+
+async function sendSyncEmail(
+  message: Extract<PopupRequest, { type: 'SEND_SYNC_EMAIL' }>,
+): Promise<SyncEmailReply> {
+  const { requestId, syncId, contactUrl, envelope } = message;
+
+  if (inFlightByContact.has(contactUrl)) {
+    return syncErrorReply(requestId, {
+      code: 'SYNC_IN_PROGRESS',
+      message: 'A sync for this conversation is already in progress.',
+      retryable: true,
+    });
+  }
+
+  if (inFlightSyncIds.has(syncId)) {
+    return syncErrorReply(requestId, {
+      code: 'SEND_IN_PROGRESS',
+      message: 'This sync attempt is already in flight.',
+      retryable: true,
+    });
+  }
+
+  const send = async (): Promise<SyncEmailReply> => {
+    let token: string;
+    try {
+      const result = await chrome.identity.getAuthToken({
+        interactive: false,
+        scopes: [GMAIL_SEND_SCOPE],
+      });
+      if (!result.token) {
+        return syncErrorReply(requestId, {
+          code: 'AUTH_FAILED',
+          message: 'Not connected to Google. Reconnect in settings to sync.',
+          retryable: true,
+        });
+      }
+      token = result.token;
+    } catch {
+      return syncErrorReply(requestId, {
+        code: 'AUTH_FAILED',
+        message: 'Not connected to Google. Reconnect in settings to sync.',
+        retryable: true,
+      });
+    }
+
+    inFlightSyncIds.add(syncId);
+
+    try {
+      const raw = buildRawMessage(envelope);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), GMAIL_SEND_TIMEOUT_MS);
+      let response: Response;
+      try {
+        response = await fetch(GMAIL_SEND_URL, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ raw }),
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeout);
+      }
+
+      if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+          await chrome.identity.removeCachedAuthToken({ token }).catch(() => undefined);
+        }
+        return syncErrorReply(requestId, classifySendError(response.status));
+      }
+
+      const data = (await response.json()) as { id?: string };
+      if (!data.id) {
+        return syncErrorReply(requestId, {
+          code: 'SEND_FAILED',
+          message: 'Gmail did not return a message id.',
+          retryable: false,
+        });
+      }
+
+      return {
+        type: 'SEND_SYNC_EMAIL',
+        requestId,
+        ok: true,
+        data: { messageId: data.id },
+      };
+    } finally {
+      inFlightSyncIds.delete(syncId);
+    }
+  };
+
+  const pending = send();
+  inFlightByContact.add(contactUrl);
+  try {
+    return await pending;
+  } finally {
+    inFlightByContact.delete(contactUrl);
+  }
 }
 
 async function disconnectGoogle(): Promise<boolean> {
@@ -142,6 +297,21 @@ export default defineBackground(() => {
                   ? `Google sign-in could not be completed. ${detail}`
                   : 'Google sign-in could not be completed. Please try again.',
               ),
+            );
+          });
+        return true;
+      }
+
+      if (message?.type === 'SEND_SYNC_EMAIL') {
+        sendSyncEmail(message)
+          .then((reply) => safeReply(reply))
+          .catch(() => {
+            safeReply(
+              syncErrorReply(message.requestId, {
+                code: 'SEND_FAILED',
+                message: 'The message could not be sent.',
+                retryable: true,
+              }),
             );
           });
         return true;
