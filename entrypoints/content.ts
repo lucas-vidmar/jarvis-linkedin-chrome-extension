@@ -25,7 +25,8 @@ import { composeJarvisEnvelope } from '@/shared/composer';
 import { setPendingScope, setPendingEnvelope } from '@/content/sync-state';
 import { extractMessages } from '@/content/extract-messages';
 import { sendSyncEmail } from '@/content/send-sync';
-import { showSyncError, showSyncSuccess } from '@/content/sync-notice';
+import { confirmDraftSent, openDraftFallback } from '@/content/draft-fallback';
+import { showSyncError, showSyncPrompt, showSyncSuccess, dismissSyncNotices } from '@/content/sync-notice';
 import { resolveCleanProfileUrl } from '@/content/resolve-profile-url';
 
 const OBSERVER_DEBOUNCE_MS = 250;
@@ -90,6 +91,45 @@ function openDropdownForButton(
         })
         .catch((error: { code?: string; message?: string }) => {
           if (!isCurrentThread(syncThreadUrl)) return;
+          if (error?.code === 'AUTH_FAILED') {
+            openDraftFallback({ contactUrl: syncThreadUrl, envelope })
+              .then(() => {
+                if (!isCurrentThread(syncThreadUrl)) return;
+                showSyncPrompt('Draft opened for review. After you send it, confirm here.', [
+                  {
+                    label: 'Confirm sent',
+                    onActivate: () => {
+                      if (!isCurrentThread(syncThreadUrl)) {
+                        dismissSyncNotices();
+                        return;
+                      }
+                      confirmDraftSent({ contactUrl: syncThreadUrl, syncId: crypto.randomUUID() })
+                        .then(() => {
+                          if (!isCurrentThread(syncThreadUrl)) return;
+                          showSyncSuccess('Draft confirmed.');
+                        })
+                        .catch(() => {
+                          if (!isCurrentThread(syncThreadUrl)) return;
+                          showSyncError('Could not confirm the draft. Try again.');
+                        });
+                    },
+                  },
+                  {
+                    label: 'Dismiss',
+                    onActivate: () => {
+                      // No confirmation is reported; the watermark never advances (FR-17).
+                      dismissSyncNotices();
+                    },
+                  },
+                ]);
+              })
+              .catch((fallbackError: { message?: string }) => {
+                if (!isCurrentThread(syncThreadUrl)) return;
+                console.log('[jarvis-sync] draft fallback failed:', fallbackError?.message ?? 'UNKNOWN');
+                showSyncError(fallbackError?.message ?? 'Could not open the draft. Try again.');
+              });
+            return;
+          }
           console.log('[jarvis-sync] send failed:', error?.code ?? 'SEND_FAILED');
           showSyncError(error?.message ?? 'Could not sync. Try again.');
         });
@@ -128,6 +168,7 @@ function unmountAndReset(): void {
   closeScopeDropdown();
   setPendingScope(null);
   setPendingEnvelope(null);
+  dismissSyncNotices();
   unmountSyncButton();
   mountedKey = null;
   stableSignature = null;

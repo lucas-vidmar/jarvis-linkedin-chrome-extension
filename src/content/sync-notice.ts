@@ -4,6 +4,11 @@ const SUCCESS_DISMISS_MS = 5000;
 
 let dismissTimer: ReturnType<typeof setTimeout> | undefined;
 
+interface NoticeAction {
+  label: string;
+  onActivate: () => void;
+}
+
 function ensureStyles(): void {
   if (document.getElementById(STYLE_ID)) return;
   const style = document.createElement('style');
@@ -31,12 +36,20 @@ function ensureStyles(): void {
 .jarvis-sync-notice--error {
   background: #b24020;
 }
+.jarvis-sync-notice--prompt {
+  background: #0a66c2;
+}
 .jarvis-sync-notice__copy {
   flex: 1;
   min-width: 0;
 }
-.jarvis-sync-notice__dismiss {
+.jarvis-sync-notice__actions {
+  display: flex;
   flex: none;
+  align-items: center;
+  gap: 4px;
+}
+.jarvis-sync-notice__action {
   font: inherit;
   font-size: 14px;
   font-weight: 600;
@@ -46,11 +59,12 @@ function ensureStyles(): void {
   border: none;
   padding: 0 2px;
   cursor: pointer;
+  white-space: nowrap;
 }
-.jarvis-sync-notice__dismiss:hover {
+.jarvis-sync-notice__action:hover {
   text-decoration: underline;
 }
-.jarvis-sync-notice__dismiss:focus-visible {
+.jarvis-sync-notice__action:focus-visible {
   outline: 2px solid #ffffff !important;
   outline-offset: 1px !important;
 }
@@ -88,7 +102,7 @@ function position(notice: HTMLElement): void {
   notice.style.top = `${top}px`;
 }
 
-function show(kind: 'success' | 'error', text: string, autoDismiss: boolean): HTMLElement {
+function show(kind: 'success' | 'error' | 'prompt', text: string, options?: { autoDismiss?: boolean; actions?: NoticeAction[] }): HTMLElement {
   document.querySelectorAll<HTMLElement>(NOTICE_SELECTOR).forEach((existing) => {
     dismiss(existing);
   });
@@ -97,7 +111,7 @@ function show(kind: 'success' | 'error', text: string, autoDismiss: boolean): HT
 
   const notice = document.createElement('div');
   notice.className = `jarvis-sync-notice jarvis-sync-notice--${kind}`;
-  notice.setAttribute('role', kind === 'success' ? 'status' : 'alert');
+  notice.setAttribute('role', kind === 'success' ? 'status' : kind === 'error' ? 'alert' : 'status');
   notice.setAttribute('data-jarvis-sync-notice', '');
   notice.setAttribute('aria-live', 'polite');
 
@@ -107,20 +121,33 @@ function show(kind: 'success' | 'error', text: string, autoDismiss: boolean): HT
 
   notice.append(copy);
 
-  if (kind === 'error') {
-    const dismissButton = document.createElement('button');
-    dismissButton.type = 'button';
-    dismissButton.className = 'jarvis-sync-notice__dismiss';
-    dismissButton.setAttribute('aria-label', 'Dismiss notification');
-    dismissButton.textContent = '×';
-    dismissButton.addEventListener('click', () => dismiss(notice));
-    notice.append(dismissButton);
+  const actions = options?.actions ?? [];
+  if (kind === 'error' && actions.length === 0) {
+    actions.push({
+      label: 'Dismiss notification',
+      onActivate: () => dismiss(notice),
+    });
+  }
+
+  if (actions.length > 0) {
+    const actionRow = document.createElement('span');
+    actionRow.className = 'jarvis-sync-notice__actions';
+    for (const action of actions) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'jarvis-sync-notice__action';
+      button.setAttribute('aria-label', action.label);
+      button.textContent = action.label === 'Dismiss notification' ? '×' : action.label;
+      button.addEventListener('click', () => action.onActivate());
+      actionRow.append(button);
+    }
+    notice.append(actionRow);
   }
 
   document.body.appendChild(notice);
   position(notice);
 
-  if (autoDismiss) {
+  if (options?.autoDismiss) {
     dismissTimer = setTimeout(() => {
       if (notice.isConnected) {
         dismiss(notice);
@@ -132,9 +159,19 @@ function show(kind: 'success' | 'error', text: string, autoDismiss: boolean): HT
 }
 
 export function showSyncSuccess(message: string): void {
-  show('success', message, true);
+  show('success', message, { autoDismiss: true });
 }
 
 export function showSyncError(message: string): void {
-  show('error', message, false);
+  show('error', message, { autoDismiss: false });
+}
+
+export function showSyncPrompt(message: string, actions: NoticeAction[]): void {
+  show('prompt', message, { autoDismiss: false, actions });
+}
+
+export function dismissSyncNotices(): void {
+  document.querySelectorAll<HTMLElement>(NOTICE_SELECTOR).forEach((existing) => {
+    dismiss(existing);
+  });
 }

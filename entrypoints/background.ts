@@ -8,9 +8,11 @@ import {
 
 const GMAIL_SEND_URL = 'https://gmail.googleapis.com/gmail/v1/users/me/messages/send';
 const GMAIL_SEND_TIMEOUT_MS = 30_000;
+const GMAIL_COMPOSE_URL_PREFIX = 'https://mail.google.com/mail/';
 
 const inFlightByContact = new Set<string>();
 const inFlightSyncIds = new Set<string>();
+const draftConfirmedByContact = new Set<string>();
 
 function authErrorReply(
   type: PopupRequest['type'],
@@ -346,6 +348,70 @@ export default defineBackground(() => {
             );
           });
         return true;
+      }
+
+      if (message?.type === 'OPEN_DRAFT_FALLBACK') {
+        if (typeof message.url !== 'string' || !message.url.startsWith(GMAIL_COMPOSE_URL_PREFIX)) {
+          safeReply({
+            type: 'OPEN_DRAFT_FALLBACK',
+            requestId: message.requestId,
+            ok: false,
+            error: {
+              code: 'SEND_FAILED',
+              message: 'Could not open the draft.',
+              retryable: false,
+            },
+          });
+          return false;
+        }
+        chrome.tabs
+          .create({ url: message.url })
+          .then(() => {
+            safeReply({
+              type: 'OPEN_DRAFT_FALLBACK',
+              requestId: message.requestId,
+              ok: true,
+              data: { opened: true },
+            });
+          })
+          .catch(() => {
+            safeReply({
+              type: 'OPEN_DRAFT_FALLBACK',
+              requestId: message.requestId,
+              ok: false,
+              error: {
+                code: 'SEND_FAILED',
+                message: 'Could not open the draft. Try again.',
+                retryable: true,
+              },
+            });
+          });
+        return true;
+      }
+
+      if (message?.type === 'CONFIRM_DRAFT_SENT') {
+        if (typeof message.contactUrl !== 'string' || typeof message.syncId !== 'string') {
+          safeReply({
+            type: 'CONFIRM_DRAFT_SENT',
+            requestId: message.requestId,
+            ok: false,
+            error: {
+              code: 'SEND_FAILED',
+              message: 'Could not confirm the draft.',
+              retryable: false,
+            },
+          });
+          return false;
+        }
+        draftConfirmedByContact.add(message.contactUrl);
+        console.log('[jarvis-sync] draft confirmed sent:', message.contactUrl, message.syncId);
+        safeReply({
+          type: 'CONFIRM_DRAFT_SENT',
+          requestId: message.requestId,
+          ok: true,
+          data: { confirmed: true },
+        });
+        return false;
       }
 
       return false;

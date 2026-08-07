@@ -6,7 +6,9 @@ export type RequestType =
   | 'GET_AUTH_STATUS'
   | 'CONNECT_GOOGLE'
   | 'DISCONNECT_GOOGLE'
-  | 'SEND_SYNC_EMAIL';
+  | 'SEND_SYNC_EMAIL'
+  | 'OPEN_DRAFT_FALLBACK'
+  | 'CONFIRM_DRAFT_SENT';
 
 interface BaseRequest {
   requestId: string;
@@ -31,11 +33,24 @@ export interface SendSyncEmailRequest extends BaseRequest {
   envelope: JarvisEnvelope;
 }
 
+export interface OpenDraftFallbackRequest extends BaseRequest {
+  type: 'OPEN_DRAFT_FALLBACK';
+  url: string;
+}
+
+export interface ConfirmDraftSentRequest extends BaseRequest {
+  type: 'CONFIRM_DRAFT_SENT';
+  contactUrl: string;
+  syncId: string;
+}
+
 export type PopupRequest =
   | GetAuthStatusRequest
   | ConnectGoogleRequest
   | DisconnectGoogleRequest
-  | SendSyncEmailRequest;
+  | SendSyncEmailRequest
+  | OpenDraftFallbackRequest
+  | ConfirmDraftSentRequest;
 
 export interface AuthStatusResult {
   connected: boolean;
@@ -54,6 +69,14 @@ export interface SendSyncEmailResult {
   messageId: string;
 }
 
+export interface OpenDraftFallbackResult {
+  opened: boolean;
+}
+
+export interface ConfirmDraftSentResult {
+  confirmed: boolean;
+}
+
 export type RequestData<T extends RequestType> = T extends 'GET_AUTH_STATUS'
   ? AuthStatusResult
   : T extends 'CONNECT_GOOGLE'
@@ -62,7 +85,11 @@ export type RequestData<T extends RequestType> = T extends 'GET_AUTH_STATUS'
       ? DisconnectResult
       : T extends 'SEND_SYNC_EMAIL'
         ? SendSyncEmailResult
-        : never;
+        : T extends 'OPEN_DRAFT_FALLBACK'
+          ? OpenDraftFallbackResult
+          : T extends 'CONFIRM_DRAFT_SENT'
+            ? ConfirmDraftSentResult
+            : never;
 
 export interface AppError {
   code: string;
