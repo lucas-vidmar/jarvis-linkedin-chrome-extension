@@ -59,9 +59,32 @@ function buildRawMessage(envelope: { to: string; subject: string; body: string }
   return toBase64Url(new TextEncoder().encode(raw));
 }
 
-function classifySendError(status: number): { code: string; message: string; retryable: boolean } {
+async function classifySendError(
+  status: number,
+  body: string,
+): Promise<{ code: string; message: string; retryable: boolean }> {
+  let gmailReason = '';
+  let gmailStatus = '';
+  try {
+    const parsed = JSON.parse(body) as {
+      error?: { code?: number; message?: string; status?: string };
+    };
+    gmailReason = parsed.error?.message ?? '';
+    gmailStatus = parsed.error?.status ?? '';
+  } catch {
+    // Non-JSON error body; fall through to status-based classification.
+  }
+
+  console.log('[jarvis-sync] gmail send error:', status, gmailStatus, gmailReason);
+
   if (status === 401 || status === 403) {
-    return { code: 'AUTH_FAILED', message: 'Your Google session expired. Reconnect to sync.', retryable: true };
+    return {
+      code: 'AUTH_FAILED',
+      message: gmailReason
+        ? `Gmail rejected the send: ${gmailReason}`
+        : 'Google could not authorize the send. Reconnect to sync.',
+      retryable: true,
+    };
   }
   if (status === 408 || status === 409 || status === 412 || status === 413 || status === 429) {
     return { code: 'SEND_FAILED', message: 'Gmail could not send the message. Try again shortly.', retryable: true };
@@ -138,10 +161,11 @@ async function sendSyncEmail(
       }
 
       if (!response.ok) {
+        const errorBody = await response.text();
         if (response.status === 401 || response.status === 403) {
           await chrome.identity.removeCachedAuthToken({ token }).catch(() => undefined);
         }
-        return syncErrorReply(requestId, classifySendError(response.status));
+        return syncErrorReply(requestId, await classifySendError(response.status, errorBody));
       }
 
       const data = (await response.json()) as { id?: string };

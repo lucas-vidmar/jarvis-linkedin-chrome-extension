@@ -1,6 +1,11 @@
 import { SCOPE_OPTIONS, type ScopeId } from '@/shared/scopes';
 
-export const JARVIS_RECIPIENT = 'jarvis@agileengine.com';
+const configuredRecipient: string | undefined = import.meta.env.WXT_JARVIS_RECIPIENT;
+
+export const JARVIS_RECIPIENT =
+  typeof configuredRecipient === 'string' && configuredRecipient.trim() !== ''
+    ? configuredRecipient.trim()
+    : 'jarvis@agileengine.com';
 export const GAP_THRESHOLD_MS = 2 * 60 * 60 * 1000;
 export const MAX_BODY_CHARS = 10_000;
 
