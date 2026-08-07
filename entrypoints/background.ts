@@ -47,10 +47,17 @@ function sanitizeHeaderValue(value: string): string {
   return value.replace(/[\r\n]+/g, ' ').trim();
 }
 
+function encodeHeaderValue(value: string): string {
+  const ascii = /^[\x00-\x7F]*$/.test(value);
+  if (ascii) return value;
+  const encoded = toBase64Url(new TextEncoder().encode(value));
+  return `=?UTF-8?B?${encoded}?=`;
+}
+
 function buildRawMessage(envelope: { to: string; subject: string; body: string }): string {
   const headers = [
     `To: ${sanitizeHeaderValue(envelope.to)}`,
-    `Subject: ${sanitizeHeaderValue(envelope.subject)}`,
+    `Subject: ${encodeHeaderValue(sanitizeHeaderValue(envelope.subject))}`,
     `Date: ${new Date().toUTCString()}`,
     'MIME-Version: 1.0',
     'Content-Type: text/plain; charset=UTF-8',

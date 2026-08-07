@@ -2,6 +2,7 @@ import { defineContentScript } from 'wxt/utils/define-content-script';
 import {
   detectConversation,
   findThreadRoot,
+  getSelfName,
   isConversationThread,
   rosterSignature,
   resetSelectorMismatchState,
@@ -25,6 +26,7 @@ import { setPendingScope, setPendingEnvelope } from '@/content/sync-state';
 import { extractMessages } from '@/content/extract-messages';
 import { sendSyncEmail } from '@/content/send-sync';
 import { showSyncError, showSyncSuccess } from '@/content/sync-notice';
+import { resolveCleanProfileUrl } from '@/content/resolve-profile-url';
 
 const OBSERVER_DEBOUNCE_MS = 250;
 const OBSERVER_MAX_WAIT_MS = 750;
@@ -65,11 +67,13 @@ function openDropdownForButton(
     threadRoot,
     selectedScope: defaultScope(false),
     messageCount,
-    onSync: (scope) => {
+    onSync: async (scope) => {
       const messages = extractMessages(threadRoot, contact);
+      const cleanUrl = (await resolveCleanProfileUrl(contact.contactUrl)) ?? contact.contactUrl;
       const envelope = composeJarvisEnvelope({
         contactName: contact.contactName,
-        contactUrl: contact.contactUrl,
+        contactUrl: cleanUrl,
+        selfName: getSelfName(document),
         scope,
         syncedAt: new Date(),
         messages,

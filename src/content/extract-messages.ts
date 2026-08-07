@@ -44,6 +44,14 @@ function parseTime(value: string): { hours: number; minutes: number } | null {
 }
 
 function resolveDayHeader(value: string, now: Date): Date | null {
+  const trimmed = value.trim().toLowerCase();
+  if (trimmed === 'today') {
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12);
+  }
+  if (trimmed === 'yesterday') {
+    const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 12);
+    return yesterday;
+  }
   const match = DAY_HEADER_RE.exec(value.trim());
   if (!match) return null;
   const month = MONTHS[match[1] as keyof typeof MONTHS];

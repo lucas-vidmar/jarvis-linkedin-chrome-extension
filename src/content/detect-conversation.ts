@@ -9,7 +9,9 @@ export const SELECTORS = {
     '.msg-title-bar',
   ],
   selfSource: '.global-nav__me a[href*="/in/"]',
+  selfName: '.global-nav__me img[alt]',
   participantLinks: 'a.msg-thread__link-to-profile, a[href*="/in/"]',
+  participantNames: ['h2.msg-entity-lockup__entity-title', 'span.msg-entity-lockup__entity-title'],
   participantAvatars: 'img[alt]',
   actionRowTargets: [
     '.msg-title-bar__title-bar-title',
@@ -117,7 +119,7 @@ function extractSlug(value: string): string | null {
   const parts = url.pathname.split('/').filter(Boolean);
   const inIndex = parts.lastIndexOf('in');
   if (inIndex < 0 || inIndex >= parts.length - 1) return null;
-  const slug = parts[inIndex + 1]?.replace(/[.\-]+$/g, '').toLowerCase();
+  const slug = parts[inIndex + 1]?.replace(/[.\-]+$/g, '');
   return slug && slug.length > 0 ? slug : null;
 }
 
@@ -203,20 +205,40 @@ function collectRosterRefs(root: HTMLElement, doc: Document): RosterResult | nul
   return { refs, signature };
 }
 
+function stripEmoji(value: string): string {
+  return value
+    .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}\u{200D}\u{2B00}-\u{2BFF}]/gu, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
 function findContactName(element: Element): string {
+  for (const selector of SELECTORS.participantNames) {
+    const title = element.querySelector<HTMLElement>(selector)?.textContent ?? null;
+    const name = stripEmoji(collapseWhitespace(title));
+    if (name) {
+      return name.slice(0, 120);
+    }
+  }
   const alt = element.querySelector('img[alt]')?.getAttribute('alt');
   if (alt) {
-    return collapseWhitespace(alt).slice(0, 120);
+    return stripEmoji(collapseWhitespace(alt)).slice(0, 120);
   }
   const ownAlt = element.getAttribute('alt');
   if (ownAlt) {
-    return collapseWhitespace(ownAlt).slice(0, 120);
+    return stripEmoji(collapseWhitespace(ownAlt)).slice(0, 120);
   }
   const text = collapseWhitespace(element.textContent);
   if (text && !text.includes('/in/')) {
-    return text.split(/[·|]/)[0]?.trim().slice(0, 120) ?? '';
+    return stripEmoji(text.split(/[·|]/)[0] ?? '').slice(0, 120);
   }
   return '';
+}
+
+export function getSelfName(doc: Document): string {
+  const image = doc.querySelector<HTMLElement>(SELECTORS.selfName);
+  const alt = image?.getAttribute('alt') ?? '';
+  return stripEmoji(collapseWhitespace(alt)).slice(0, 120);
 }
 
 export function rosterSignature(root: HTMLElement, doc: Document): string | null {

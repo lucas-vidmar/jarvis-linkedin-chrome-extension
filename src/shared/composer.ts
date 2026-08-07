@@ -6,7 +6,6 @@ export const JARVIS_RECIPIENT =
   typeof configuredRecipient === 'string' && configuredRecipient.trim() !== ''
     ? configuredRecipient.trim()
     : 'jarvis@agileengine.com';
-export const GAP_THRESHOLD_MS = 2 * 60 * 60 * 1000;
 export const MAX_BODY_CHARS = 10_000;
 
 export type SenderKey = 'self' | 'contact';
@@ -20,6 +19,7 @@ export interface ComposerMessage {
 export interface ComposerInput {
   contactName: string;
   contactUrl: string;
+  selfName: string;
   scope: ScopeId;
   syncedAt: Date;
   messages: ComposerMessage[];
@@ -41,8 +41,16 @@ function formatDate(date: Date): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
-function formatDateTime(date: Date): string {
-  return `${formatDate(date)} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+function formatClockTime(date: Date): string {
+  let hours = date.getHours();
+  const meridiem = hours >= 12 ? 'PM' : 'AM';
+  hours = hours % 12;
+  if (hours === 0) hours = 12;
+  return `${hours}:${pad(date.getMinutes())} ${meridiem}`;
+}
+
+function formatMdy(date: Date): string {
+  return `${date.getMonth() + 1}/${date.getDate()}/${date.getFullYear()}`;
 }
 
 function scopeLabel(scope: ScopeId): string {
@@ -85,12 +93,12 @@ function sortMessages(messages: ComposerMessage[]): ComposerMessage[] {
 export function composeJarvisEnvelope(input: ComposerInput): JarvisEnvelope {
   const sorted = sortMessages(input.messages);
   const contactName = input.contactName.trim() || 'Contact';
+  const selfName = input.selfName.trim() || 'You';
   const parts = [input.contactUrl, `Synced ${formatDate(input.syncedAt)} — ${scopeLabel(input.scope)}`, ''];
 
   let size = parts.join('\n').length;
   let truncated = false;
   let omittedCount = 0;
-  let lastTimestamp: number | null = null;
 
   for (let index = 0; index < sorted.length; index += 1) {
     const message = sorted[index];
@@ -98,20 +106,17 @@ export function composeJarvisEnvelope(input: ComposerInput): JarvisEnvelope {
     if (!text) {
       continue;
     }
-    const senderLabel = message.senderKey === 'self' ? 'You' : contactName;
+    const senderName = message.senderKey === 'self' ? selfName : contactName;
 
-    let marker = '';
+    let stamp = '';
     if (message.timestampMs !== null) {
-      if (lastTimestamp !== null && message.timestampMs - lastTimestamp > GAP_THRESHOLD_MS) {
-        const stamp = new Date(message.timestampMs);
-        if (!Number.isNaN(stamp.getTime())) {
-          marker = `[${formatDateTime(stamp)}] `;
-        }
+      const date = new Date(message.timestampMs);
+      if (!Number.isNaN(date.getTime())) {
+        stamp = ` [${formatClockTime(date)} - ${formatMdy(date)}]`;
       }
-      lastTimestamp = message.timestampMs;
     }
 
-    const line = `${marker}${senderLabel}: ${text}`;
+    const line = `[${senderName}]${stamp} ${text}`;
     const additional = line.length + 1;
     if (size + additional > MAX_BODY_CHARS) {
       truncated = true;
