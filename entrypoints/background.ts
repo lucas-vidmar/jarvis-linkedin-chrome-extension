@@ -9,6 +9,7 @@ import {
 const GMAIL_SEND_URL = 'https://gmail.googleapis.com/gmail/v1/users/me/messages/send';
 const GMAIL_SEND_TIMEOUT_MS = 30_000;
 const GMAIL_COMPOSE_URL_PREFIX = 'https://mail.google.com/mail/';
+const GMAIL_OAUTH_REVOKE_URL = 'https://oauth2.googleapis.com/revoke';
 
 const inFlightByContact = new Set<string>();
 const inFlightSyncIds = new Set<string>();
@@ -224,6 +225,9 @@ async function disconnectGoogle(): Promise<boolean> {
 
   if (token) {
     await chrome.identity.removeCachedAuthToken({ token });
+    await fetch(`${GMAIL_OAUTH_REVOKE_URL}?token=${encodeURIComponent(token)}`, {
+      method: 'POST',
+    }).catch(() => undefined);
   }
   return true;
 }

@@ -26,6 +26,7 @@ const requiredHosts = [
   'https://www.linkedin.com/*',
   'https://gmail.googleapis.com/*',
   'https://www.googleapis.com/*',
+  'https://oauth2.googleapis.com/*',
 ];
 for (const host of requiredHosts) {
   if (!manifest.host_permissions?.includes(host)) {

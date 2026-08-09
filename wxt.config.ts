@@ -14,6 +14,7 @@ export default defineConfig({
       'https://www.linkedin.com/*',
       'https://gmail.googleapis.com/*',
       'https://www.googleapis.com/*',
+      'https://oauth2.googleapis.com/*',
     ],
   },
 });
