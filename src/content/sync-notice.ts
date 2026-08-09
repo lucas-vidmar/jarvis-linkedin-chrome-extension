@@ -39,6 +39,20 @@ function ensureStyles(): void {
 .jarvis-sync-notice--prompt {
   background: #0a66c2;
 }
+.jarvis-sync-notice--pending {
+  background: #191919;
+}
+.jarvis-sync-notice__spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  box-sizing: border-box;
+  vertical-align: -2px;
+  margin-right: 6px;
+}
 .jarvis-sync-notice__copy {
   flex: 1;
   min-width: 0;
@@ -72,10 +86,16 @@ function ensureStyles(): void {
   .jarvis-sync-notice {
     animation: jarvis-sync-notice-in 160ms ease-out;
   }
+  .jarvis-sync-notice__spinner {
+    animation: jarvis-notice-spin 800ms linear infinite;
+  }
 }
 @keyframes jarvis-sync-notice-in {
   from { opacity: 0; transform: translateY(-4px); }
   to { opacity: 1; transform: translateY(0); }
+}
+@keyframes jarvis-notice-spin {
+  to { transform: rotate(360deg); }
 }
 `;
   document.head.appendChild(style);
@@ -102,7 +122,11 @@ function position(notice: HTMLElement): void {
   notice.style.top = `${top}px`;
 }
 
-function show(kind: 'success' | 'error' | 'prompt', text: string, options?: { autoDismiss?: boolean; actions?: NoticeAction[] }): HTMLElement {
+function show(
+  kind: 'success' | 'error' | 'prompt' | 'pending',
+  text: string,
+  options?: { autoDismiss?: boolean; actions?: NoticeAction[] },
+): HTMLElement {
   document.querySelectorAll<HTMLElement>(NOTICE_SELECTOR).forEach((existing) => {
     dismiss(existing);
   });
@@ -111,26 +135,36 @@ function show(kind: 'success' | 'error' | 'prompt', text: string, options?: { au
 
   const notice = document.createElement('div');
   notice.className = `jarvis-sync-notice jarvis-sync-notice--${kind}`;
-  notice.setAttribute('role', kind === 'success' ? 'status' : kind === 'error' ? 'alert' : 'status');
+  notice.setAttribute('role', kind === 'error' ? 'alert' : 'status');
   notice.setAttribute('data-jarvis-sync-notice', '');
-  notice.setAttribute('aria-live', 'polite');
+  if (kind !== 'error') {
+    notice.setAttribute('aria-live', 'polite');
+  }
 
   const copy = document.createElement('span');
   copy.className = 'jarvis-sync-notice__copy';
-  copy.textContent = text;
+  if (kind === 'pending') {
+    const spinner = document.createElement('span');
+    spinner.className = 'jarvis-sync-notice__spinner';
+    spinner.setAttribute('aria-hidden', 'true');
+    copy.append(spinner, document.createTextNode(text));
+  } else {
+    copy.textContent = text;
+  }
 
   notice.append(copy);
 
   const actions = options?.actions ?? [];
-  if (kind === 'error' && actions.length === 0) {
+  if (kind === 'error') {
     actions.push({
       label: 'Dismiss notification',
       onActivate: () => dismiss(notice),
     });
   }
 
+  let actionRow: HTMLElement | null = null;
   if (actions.length > 0) {
-    const actionRow = document.createElement('span');
+    actionRow = document.createElement('span');
     actionRow.className = 'jarvis-sync-notice__actions';
     for (const action of actions) {
       const button = document.createElement('button');
@@ -147,6 +181,11 @@ function show(kind: 'success' | 'error' | 'prompt', text: string, options?: { au
   document.body.appendChild(notice);
   position(notice);
 
+  if (actionRow) {
+    const firstAction = actionRow.querySelector<HTMLButtonElement>('button');
+    firstAction?.focus();
+  }
+
   if (options?.autoDismiss) {
     dismissTimer = setTimeout(() => {
       if (notice.isConnected) {
@@ -162,8 +201,12 @@ export function showSyncSuccess(message: string): void {
   show('success', message, { autoDismiss: true });
 }
 
-export function showSyncError(message: string): void {
-  show('error', message, { autoDismiss: false });
+export function showSyncError(message: string, actions?: NoticeAction[]): void {
+  show('error', message, { autoDismiss: false, actions });
+}
+
+export function showSyncInProgress(message: string): void {
+  show('pending', message, { autoDismiss: false });
 }
 
 export function showSyncPrompt(message: string, actions: NoticeAction[]): void {

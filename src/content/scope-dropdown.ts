@@ -17,7 +17,7 @@ export interface ScopeDropdownOptions {
   threadRoot: HTMLElement;
   selectedScope: ScopeId;
   messageCount: number;
-  onSync: (scope: ScopeId, messageCount: number) => void;
+  onSync: (scope: ScopeId, messageCount: number) => void | Promise<void>;
   onCancel: () => void;
 }
 
@@ -79,6 +79,13 @@ function ensureStyles(): void {
 .jarvis-scope-dropdown__row:hover,
 .jarvis-scope-dropdown__row[aria-checked="true"] {
   background: #f3f2ef;
+}
+.jarvis-scope-dropdown__row[aria-disabled="true"] {
+  cursor: default;
+  opacity: 0.5;
+}
+.jarvis-scope-dropdown__row[aria-disabled="true"]:hover {
+  background: transparent;
 }
 .jarvis-scope-dropdown__row:focus {
   outline: 2px solid #444ce7 !important;
@@ -175,14 +182,35 @@ function ensureStyles(): void {
   opacity: 0.4;
   cursor: not-allowed;
 }
+.jarvis-scope-dropdown__confirm[aria-busy="true"]:disabled {
+  opacity: 1;
+  cursor: wait;
+}
+.jarvis-scope-dropdown__spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  box-sizing: border-box;
+  vertical-align: -2px;
+  margin-right: 6px;
+}
 @media (prefers-reduced-motion: no-preference) {
   .jarvis-scope-dropdown {
     animation: jarvis-dropdown-in 160ms ease-out;
+  }
+  .jarvis-scope-dropdown__spinner {
+    animation: jarvis-spin 800ms linear infinite;
   }
 }
 @keyframes jarvis-dropdown-in {
   from { opacity: 0; transform: translateY(-4px); }
   to { opacity: 1; transform: translateY(0); }
+}
+@keyframes jarvis-spin {
+  to { transform: rotate(360deg); }
 }
 `;
   document.head.appendChild(style);
@@ -288,11 +316,17 @@ export function openScopeDropdown(options: ScopeDropdownOptions): void {
 
   let selectedScope = options.selectedScope;
   let messageCount = options.messageCount;
+  let pending = false;
   const rows = new Map<ScopeId, HTMLElement>();
 
   const hint = document.createElement('span');
   hint.className = 'jarvis-scope-dropdown__hint';
   hint.textContent = computeHint(selectedScope, messageCount);
+
+  const syncLabel = document.createTextNode('Sync');
+  const spinner = document.createElement('span');
+  spinner.className = 'jarvis-scope-dropdown__spinner';
+  spinner.setAttribute('aria-hidden', 'true');
 
   const confirmButton = document.createElement('button');
   confirmButton.type = 'button';
@@ -304,16 +338,34 @@ export function openScopeDropdown(options: ScopeDropdownOptions): void {
   cancelButton.className = 'jarvis-scope-dropdown__cancel';
   cancelButton.textContent = 'Cancel';
 
+  function setPending(flag: boolean): void {
+    pending = flag;
+    cancelButton.disabled = flag;
+    panel.setAttribute('aria-busy', String(flag));
+    for (const row of rows.values()) {
+      row.setAttribute('aria-disabled', String(flag));
+    }
+    if (flag) {
+      confirmButton.setAttribute('aria-busy', 'true');
+      confirmButton.replaceChildren(spinner);
+    } else {
+      confirmButton.removeAttribute('aria-busy');
+      confirmButton.replaceChildren(syncLabel);
+    }
+    refresh();
+  }
+
   function refresh(): void {
-    const eligible = isScopeEligible(selectedScope) && messageCount >= 1;
+    const eligible = !pending && isScopeEligible(selectedScope) && messageCount >= 1;
     confirmButton.disabled = !eligible;
     hint.textContent = computeHint(selectedScope, messageCount);
-    if (!eligible && document.activeElement === confirmButton) {
+    if (!pending && !eligible && document.activeElement === confirmButton) {
       rows.get(selectedScope)?.focus();
     }
   }
 
   function applySelection(scope: ScopeId): void {
+    if (pending) return;
     selectedScope = scope;
     for (const [id, row] of rows) {
       const isSelected = id === scope;
@@ -371,10 +423,20 @@ export function openScopeDropdown(options: ScopeDropdownOptions): void {
   });
 
   confirmButton.addEventListener('click', () => {
+    if (pending) return;
     if (options.anchor.isConnected) {
       options.anchor.focus();
     }
-    options.onSync(selectedScope, messageCount);
+    setPending(true);
+    Promise.resolve()
+      .then(() => options.onSync(selectedScope, messageCount))
+      .catch(() => {
+        // onSync is expected to handle its own outcomes; a rejection here must
+        // not leave the dropdown stuck in the pending state (UX-DR13).
+      })
+      .finally(() => {
+        closeScopeDropdown();
+      });
   });
 
   cancelButton.addEventListener('click', () => {
