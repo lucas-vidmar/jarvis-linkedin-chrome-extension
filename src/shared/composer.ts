@@ -14,6 +14,7 @@ export interface ComposerMessage {
   senderKey: SenderKey;
   timestampMs: number | null;
   text: string;
+  fingerprint: string | null;
 }
 
 export interface ComposerInput {

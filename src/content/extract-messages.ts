@@ -1,5 +1,6 @@
 import { SELECTORS, isVisible, type ContactRef } from '@/content/detect-conversation';
 import type { ComposerMessage, SenderKey } from '@/shared/composer';
+import { computeMessageFingerprint } from '@/shared/fingerprint';
 
 const MONTHS: Record<string, number> = {
   Jan: 0,
@@ -92,7 +93,7 @@ function readSender(row: HTMLElement): SenderKey {
   return 'self';
 }
 
-export function extractMessages(root: HTMLElement, _contact: ContactRef, now = new Date()): ComposerMessage[] {
+export async function extractMessages(root: HTMLElement, contact: ContactRef, now = new Date()): Promise<ComposerMessage[]> {
   const messages: ComposerMessage[] = [];
   let currentDay: Date | null = null;
 
@@ -115,10 +116,17 @@ export function extractMessages(root: HTMLElement, _contact: ContactRef, now = n
           seen.add(row);
           const text = readText(row);
           if (!text) continue;
+          const senderKey = readSender(row);
+          const timestampMs = readTimestamp(row, currentDay, now);
           messages.push({
-            senderKey: readSender(row),
-            timestampMs: readTimestamp(row, currentDay, now),
+            senderKey,
+            timestampMs,
             text,
+            fingerprint: await computeMessageFingerprint({
+              senderKey: senderKey === 'self' ? 'self' : contact.contactUrl,
+              epochMs: timestampMs,
+              text,
+            }),
           });
         }
       }

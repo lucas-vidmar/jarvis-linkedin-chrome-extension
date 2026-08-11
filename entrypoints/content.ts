@@ -157,7 +157,7 @@ function openDropdownForButton(
     selectedScope: defaultScope(false),
     messageCount,
     onSync: async (scope) => {
-      const messages = extractMessages(threadRoot, contact);
+      const messages = await extractMessages(threadRoot, contact);
       const cleanUrl = (await resolveCleanProfileUrl(contact.contactUrl)) ?? contact.contactUrl;
       const envelope = composeJarvisEnvelope({
         contactName: contact.contactName,
