@@ -74,7 +74,12 @@ function runDraftFallback(threadUrl: string, envelope: JarvisEnvelope): void {
               dismissSyncNotices();
               return;
             }
-            confirmDraftSent({ contactUrl: threadUrl, syncId: crypto.randomUUID() })
+            confirmDraftSent({
+              contactUrl: threadUrl,
+              syncId: crypto.randomUUID(),
+              lastMessageFingerprint: envelope.lastMessageFingerprint,
+              composedAtEpochMs: envelope.composedAtEpochMs,
+            })
               .then(() => {
                 if (!isCurrentThread(threadUrl)) return;
                 showSyncSuccess('Draft confirmed.');

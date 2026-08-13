@@ -42,6 +42,8 @@ export interface ConfirmDraftSentRequest extends BaseRequest {
   type: 'CONFIRM_DRAFT_SENT';
   contactUrl: string;
   syncId: string;
+  lastMessageFingerprint: string | null;
+  composedAtEpochMs: number;
 }
 
 export type PopupRequest =

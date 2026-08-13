@@ -32,6 +32,8 @@ export interface JarvisEnvelope {
   body: string;
   truncated: boolean;
   omittedCount: number;
+  lastMessageFingerprint: string | null;
+  composedAtEpochMs: number;
 }
 
 function pad(value: number): string {
@@ -96,6 +98,7 @@ export function composeJarvisEnvelope(input: ComposerInput): JarvisEnvelope {
   const contactName = input.contactName.trim() || 'Contact';
   const selfName = input.selfName.trim() || 'You';
   const parts = [input.contactUrl, `Synced ${formatDate(input.syncedAt)} — ${scopeLabel(input.scope)}`, ''];
+  const includedMessages: ComposerMessage[] = [];
 
   let size = parts.join('\n').length;
   let truncated = false;
@@ -125,6 +128,7 @@ export function composeJarvisEnvelope(input: ComposerInput): JarvisEnvelope {
       break;
     }
     parts.push(line);
+    includedMessages.push(message);
     size += additional;
   }
 
@@ -132,6 +136,7 @@ export function composeJarvisEnvelope(input: ComposerInput): JarvisEnvelope {
     let notice = `[Truncated: ${omittedCount} message(s) omitted — thread exceeded the email size limit]`;
     while (size + notice.length + 1 > MAX_BODY_CHARS && parts.length > 3) {
       const dropped = parts.pop() ?? '';
+      includedMessages.pop();
       size -= dropped.length + 1;
       omittedCount += 1;
       notice = `[Truncated: ${omittedCount} message(s) omitted — thread exceeded the email size limit]`;
@@ -139,12 +144,16 @@ export function composeJarvisEnvelope(input: ComposerInput): JarvisEnvelope {
     parts.push(notice);
   }
 
+  const lastIncluded = includedMessages[includedMessages.length - 1];
+
   return {
     to: JARVIS_RECIPIENT,
     subject: `LinkedIn sync: ${contactName}`,
     body: parts.join('\n'),
     truncated,
     omittedCount,
+    lastMessageFingerprint: lastIncluded?.fingerprint ?? null,
+    composedAtEpochMs: input.syncedAt.getTime(),
   };
 }
 

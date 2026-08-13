@@ -5,6 +5,7 @@ import {
   type PopupRequest,
   type SyncEmailReply,
 } from '@/shared/messages';
+import { advanceWatermark } from '@/background/watermark';
 
 const GMAIL_SEND_URL = 'https://gmail.googleapis.com/gmail/v1/users/me/messages/send';
 const GMAIL_SEND_TIMEOUT_MS = 30_000;
@@ -13,7 +14,6 @@ const GMAIL_OAUTH_REVOKE_URL = 'https://oauth2.googleapis.com/revoke';
 
 const inFlightByContact = new Set<string>();
 const inFlightSyncIds = new Set<string>();
-const draftConfirmedByContact = new Set<string>();
 
 function authErrorReply(
   type: PopupRequest['type'],
@@ -186,6 +186,8 @@ async function sendSyncEmail(
           retryable: false,
         });
       }
+
+      await advanceWatermark(contactUrl, envelope.lastMessageFingerprint, envelope.composedAtEpochMs);
 
       return {
         type: 'SEND_SYNC_EMAIL',
@@ -394,28 +396,44 @@ export default defineBackground(() => {
       }
 
       if (message?.type === 'CONFIRM_DRAFT_SENT') {
-        if (typeof message.contactUrl !== 'string' || typeof message.syncId !== 'string') {
+        const hasValidFingerprint =
+          message.lastMessageFingerprint === null ||
+          (typeof message.lastMessageFingerprint === 'string' &&
+            /^[0-9a-f]{64}$/.test(message.lastMessageFingerprint));
+        if (
+          typeof message.contactUrl !== 'string' ||
+          typeof message.syncId !== 'string' ||
+          typeof message.composedAtEpochMs !== 'number' ||
+          !Number.isFinite(message.composedAtEpochMs) ||
+          !hasValidFingerprint
+        ) {
           safeReply({
             type: 'CONFIRM_DRAFT_SENT',
             requestId: message.requestId,
             ok: false,
             error: {
               code: 'SEND_FAILED',
-              message: 'Could not confirm the draft.',
-              retryable: false,
+              message: 'Could not confirm the draft. Reload the tab and try again.',
+              retryable: true,
             },
           });
           return false;
         }
-        draftConfirmedByContact.add(message.contactUrl);
-        console.log('[jarvis-sync] draft confirmed sent:', message.contactUrl, message.syncId);
-        safeReply({
-          type: 'CONFIRM_DRAFT_SENT',
-          requestId: message.requestId,
-          ok: true,
-          data: { confirmed: true },
-        });
-        return false;
+        const replyConfirmed = (): void => {
+          console.log('[jarvis-sync] draft confirmed sent:', message.contactUrl, message.syncId);
+          safeReply({
+            type: 'CONFIRM_DRAFT_SENT',
+            requestId: message.requestId,
+            ok: true,
+            data: { confirmed: true },
+          });
+        };
+        advanceWatermark(
+          message.contactUrl,
+          message.lastMessageFingerprint,
+          message.composedAtEpochMs,
+        ).then(replyConfirmed, replyConfirmed);
+        return true;
       }
 
       return false;

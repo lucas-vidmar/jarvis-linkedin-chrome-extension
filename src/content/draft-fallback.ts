@@ -13,6 +13,8 @@ interface OpenDraftFallbackArgs {
 interface ConfirmDraftSentArgs {
   contactUrl: string;
   syncId: string;
+  lastMessageFingerprint: string | null;
+  composedAtEpochMs: number;
 }
 
 export async function openDraftFallback(args: OpenDraftFallbackArgs): Promise<OpenDraftFallbackResult> {
@@ -63,6 +65,8 @@ export async function confirmDraftSent(args: ConfirmDraftSentArgs): Promise<Conf
       requestId,
       contactUrl: args.contactUrl,
       syncId: args.syncId,
+      lastMessageFingerprint: args.lastMessageFingerprint,
+      composedAtEpochMs: args.composedAtEpochMs,
     })) as typeof reply;
   } catch {
     throw {

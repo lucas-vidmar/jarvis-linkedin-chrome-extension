@@ -5,7 +5,7 @@ export default defineConfig({
   entrypointsDir: '../entrypoints',
   manifest: {
     name: 'Jarvis Sync',
-    permissions: ['identity'],
+    permissions: ['identity', 'storage'],
     oauth2: {
       scopes: ['https://www.googleapis.com/auth/gmail.send'],
       client_id: '98831444529-vea88qlt53hm8m53mgnt67msqgb8gcul.apps.googleusercontent.com',
