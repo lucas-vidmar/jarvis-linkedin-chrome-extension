@@ -20,15 +20,16 @@ import {
   isScopeDropdownOpen,
   openScopeDropdown,
 } from '@/content/scope-dropdown';
-import { defaultScope } from '@/shared/scopes';
+import { defaultScope, type ScopeId } from '@/shared/scopes';
 import { composeJarvisEnvelope } from '@/shared/composer';
+import { filterMessagesByScope } from '@/shared/scope-filter';
 import { setPendingScope, setPendingEnvelope } from '@/content/sync-state';
 import { extractMessages } from '@/content/extract-messages';
 import { sendSyncEmail } from '@/content/send-sync';
 import { confirmDraftSent, openDraftFallback } from '@/content/draft-fallback';
 import { showSyncError, showSyncInProgress, showSyncPrompt, showSyncSuccess, dismissSyncNotices } from '@/content/sync-notice';
 import { failureReasonLabel } from '@/shared/errors';
-import type { JarvisEnvelope } from '@/shared/composer';
+import type { ComposerMessage, JarvisEnvelope } from '@/shared/composer';
 import { resolveCleanProfileUrl } from '@/content/resolve-profile-url';
 
 const OBSERVER_DEBOUNCE_MS = 250;
@@ -156,13 +157,30 @@ function openDropdownForButton(
   contact: { contactName: string; contactUrl: string },
 ): void {
   const messageCount = countVisibleMessages(threadRoot);
+  const extraction = extractMessages(threadRoot, contact);
+  const countForScope = async (scope: ScopeId): Promise<number> => {
+    const messages = await extraction;
+    return filterMessagesByScope(messages, scope, new Date()).length;
+  };
   openScopeDropdown({
     anchor: button,
     threadRoot,
     selectedScope: defaultScope(false),
     messageCount,
+    countForScope,
     onSync: async (scope) => {
-      const messages = await extractMessages(threadRoot, contact);
+      let extracted: ComposerMessage[];
+      try {
+        extracted = await extractMessages(threadRoot, contact);
+      } catch {
+        showSyncError('Could not read the conversation. Try again.');
+        return;
+      }
+      const messages = filterMessagesByScope(extracted, scope, new Date());
+      if (messages.length === 0) {
+        showSyncError('Nothing to sync in this window yet.');
+        return;
+      }
       const cleanUrl = (await resolveCleanProfileUrl(contact.contactUrl)) ?? contact.contactUrl;
       const envelope = composeJarvisEnvelope({
         contactName: contact.contactName,

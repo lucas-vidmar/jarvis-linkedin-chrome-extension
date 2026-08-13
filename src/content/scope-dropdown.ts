@@ -4,6 +4,7 @@ import {
   isScopeEligible,
   type ScopeId,
 } from '@/shared/scopes';
+import { isTimeScope } from '@/shared/scope-filter';
 import { countVisibleMessages } from '@/content/message-counter';
 
 const STYLE_ID = 'jarvis-scope-dropdown-styles';
@@ -17,6 +18,7 @@ export interface ScopeDropdownOptions {
   threadRoot: HTMLElement;
   selectedScope: ScopeId;
   messageCount: number;
+  countForScope?: (scope: ScopeId) => Promise<number>;
   onSync: (scope: ScopeId, messageCount: number) => void | Promise<void>;
   onCancel: () => void;
 }
@@ -220,17 +222,17 @@ function removeStyles(): void {
   document.getElementById(STYLE_ID)?.remove();
 }
 
-function computeHint(scope: ScopeId, messageCount: number): string {
+function computeHint(scope: ScopeId, messageCount: number | null): string {
   if (!isScopeEligible(scope)) {
     return 'Selection arrives in a later story.';
+  }
+  if (messageCount === null) {
+    return 'Counting messages…';
   }
   if (messageCount === 0) {
     return 'No messages to sync yet.';
   }
   const unit = messageCount === 1 ? 'message' : 'messages';
-  if (scope === 'today' || scope === 'last-24-hours' || scope === 'last-week') {
-    return `${messageCount} ${unit} loaded in the thread`;
-  }
   return `${messageCount} ${unit} will sync`;
 }
 
@@ -318,7 +320,60 @@ export function openScopeDropdown(options: ScopeDropdownOptions): void {
   let messageCount = options.messageCount;
   let pending = false;
   const rows = new Map<ScopeId, HTMLElement>();
+  const countForScope = options.countForScope;
+  let resolvedCount: number | null = null;
+  let countFailed = false;
+  let resolveSeq = 0;
+  const resolvedByScope = new Map<ScopeId, number>();
+  const failedByScope = new Set<ScopeId>();
 
+  function effectiveCount(): number | null {
+    if (countForScope && isTimeScope(selectedScope)) {
+      return resolvedCount;
+    }
+    return messageCount;
+  }
+
+  function refreshCount(scope: ScopeId): void {
+    resolveSeq += 1;
+    const seq = resolveSeq;
+    if (!countForScope || !isTimeScope(scope)) {
+      resolvedCount = null;
+      countFailed = false;
+      refresh();
+      return;
+    }
+    if (failedByScope.has(scope)) {
+      resolvedCount = 0;
+      countFailed = true;
+      refresh();
+      return;
+    }
+    const cached = resolvedByScope.get(scope);
+    if (cached !== undefined) {
+      resolvedCount = cached;
+      countFailed = false;
+      refresh();
+      return;
+    }
+    resolvedCount = null;
+    countFailed = false;
+    refresh();
+    Promise.resolve(countForScope(scope))
+      .then((count) => {
+        if (seq !== resolveSeq) return;
+        resolvedByScope.set(scope, count);
+        resolvedCount = count;
+        refresh();
+      })
+      .catch(() => {
+        if (seq !== resolveSeq) return;
+        failedByScope.add(scope);
+        resolvedCount = 0;
+        countFailed = true;
+        refresh();
+      });
+  }
   const hint = document.createElement('span');
   hint.className = 'jarvis-scope-dropdown__hint';
   hint.textContent = computeHint(selectedScope, messageCount);
@@ -356,9 +411,11 @@ export function openScopeDropdown(options: ScopeDropdownOptions): void {
   }
 
   function refresh(): void {
-    const eligible = !pending && isScopeEligible(selectedScope) && messageCount >= 1;
+    const count = effectiveCount();
+    const failed = countForScope && isTimeScope(selectedScope) && countFailed;
+    const eligible = !pending && isScopeEligible(selectedScope) && (count ?? 0) >= 1 && !failed;
     confirmButton.disabled = !eligible;
-    hint.textContent = computeHint(selectedScope, messageCount);
+    hint.textContent = failed ? "Couldn't read messages — reopen to try again." : computeHint(selectedScope, count);
     if (!pending && !eligible && document.activeElement === confirmButton) {
       rows.get(selectedScope)?.focus();
     }
@@ -372,7 +429,7 @@ export function openScopeDropdown(options: ScopeDropdownOptions): void {
       row.setAttribute('aria-checked', String(isSelected));
       row.tabIndex = isSelected ? 0 : -1;
     }
-    refresh();
+    refreshCount(scope);
   }
 
   for (const scope of SCOPE_OPTIONS) {
@@ -380,7 +437,7 @@ export function openScopeDropdown(options: ScopeDropdownOptions): void {
     rows.set(scope.id, row);
     group.appendChild(row);
   }
-  refresh();
+  refreshCount(selectedScope);
 
   const footer = document.createElement('div');
   footer.className = 'jarvis-scope-dropdown__footer';
