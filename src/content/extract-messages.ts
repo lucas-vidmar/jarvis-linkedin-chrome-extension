@@ -111,6 +111,7 @@ function readSender(row: HTMLElement): SenderKey {
 export async function extractMessages(root: HTMLElement, contact: ContactRef, now = new Date()): Promise<ComposerMessage[]> {
   const messages: ComposerMessage[] = [];
   let currentDay: Date | null = null;
+  let carryTimestamp: number | null = null;
 
   for (const groupSelector of SELECTORS.messageDayGroups) {
     for (const group of root.querySelectorAll<HTMLElement>(groupSelector)) {
@@ -120,6 +121,7 @@ export async function extractMessages(root: HTMLElement, contact: ContactRef, no
         const headerText = header?.textContent?.trim() ?? '';
         if (headerText) {
           currentDay = resolveDayHeader(headerText, now);
+          carryTimestamp = null;
         }
       }
 
@@ -132,7 +134,11 @@ export async function extractMessages(root: HTMLElement, contact: ContactRef, no
           const text = readText(row);
           if (!text) continue;
           const senderKey = readSender(row);
-          const timestampMs = readTimestamp(row, currentDay, now);
+          const ownTimestamp = readTimestamp(row, currentDay, now);
+          const timestampMs = ownTimestamp ?? carryTimestamp;
+          if (ownTimestamp !== null) {
+            carryTimestamp = ownTimestamp;
+          }
           messages.push({
             senderKey,
             timestampMs,
