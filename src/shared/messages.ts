@@ -10,7 +10,9 @@ export type RequestType =
   | 'SEND_SYNC_EMAIL'
   | 'OPEN_DRAFT_FALLBACK'
   | 'CONFIRM_DRAFT_SENT'
-  | 'READ_WATERMARK';
+  | 'READ_WATERMARK'
+  | 'LIST_WATERMARKS'
+  | 'RESET_WATERMARK';
 
 interface BaseRequest {
   requestId: string;
@@ -53,6 +55,20 @@ export interface ReadWatermarkRequest extends BaseRequest {
   contactUrl: string;
 }
 
+export interface ListWatermarksRequest extends BaseRequest {
+  type: 'LIST_WATERMARKS';
+}
+
+export interface ResetWatermarkRequest extends BaseRequest {
+  type: 'RESET_WATERMARK';
+  contactUrl: string;
+}
+
+export interface WatermarkEntry {
+  contactUrl: string;
+  watermark: WatermarkValue;
+}
+
 export type PopupRequest =
   | GetAuthStatusRequest
   | ConnectGoogleRequest
@@ -60,7 +76,9 @@ export type PopupRequest =
   | SendSyncEmailRequest
   | OpenDraftFallbackRequest
   | ConfirmDraftSentRequest
-  | ReadWatermarkRequest;
+  | ReadWatermarkRequest
+  | ListWatermarksRequest
+  | ResetWatermarkRequest;
 
 export interface AuthStatusResult {
   connected: boolean;
@@ -91,6 +109,14 @@ export interface ReadWatermarkResult {
   watermark: WatermarkValue | null;
 }
 
+export interface ListWatermarksResult {
+  watermarks: WatermarkEntry[];
+}
+
+export interface ResetWatermarkResult {
+  reset: boolean;
+}
+
 export type RequestData<T extends RequestType> = T extends 'GET_AUTH_STATUS'
   ? AuthStatusResult
   : T extends 'CONNECT_GOOGLE'
@@ -105,7 +131,11 @@ export type RequestData<T extends RequestType> = T extends 'GET_AUTH_STATUS'
             ? ConfirmDraftSentResult
             : T extends 'READ_WATERMARK'
               ? ReadWatermarkResult
-              : never;
+              : T extends 'LIST_WATERMARKS'
+                ? ListWatermarksResult
+                : T extends 'RESET_WATERMARK'
+                  ? ResetWatermarkResult
+                  : never;
 
 export interface AppError {
   code: string;

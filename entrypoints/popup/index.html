@@ -178,6 +178,90 @@
         border: 0;
       }
 
+      .watermark-section {
+        padding: 16px 20px 20px;
+        border-top: 1px solid #eceef2;
+      }
+
+      .watermark-section h2 {
+        margin: 0 0 4px;
+        font-size: 14px;
+        font-weight: 700;
+        line-height: 1.4;
+      }
+
+      .watermark-section .helper {
+        margin: 0 0 8px;
+      }
+
+      .watermark-list {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .watermark-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 0;
+        border-top: 1px solid #eceef2;
+      }
+
+      .watermark-row:first-child {
+        border-top: 0;
+      }
+
+      .watermark-meta {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .watermark-contact {
+        display: block;
+        overflow: hidden;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--ink);
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .watermark-time {
+        display: block;
+        margin-top: 2px;
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--muted);
+      }
+
+      .reset-button {
+        flex: none;
+        padding: 6px 12px;
+        font: inherit;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--error);
+        background: var(--surface);
+        border: 1px solid var(--error);
+        border-radius: 6px;
+        cursor: pointer;
+      }
+
+      .reset-button:hover:not(:disabled) {
+        background: #fef3f2;
+      }
+
+      .reset-button:focus-visible {
+        outline: 2px solid var(--focus-ring);
+        outline-offset: 2px;
+      }
+
+      .reset-button:disabled {
+        opacity: 0.6;
+        cursor: default;
+      }
+
       [hidden] {
         display: none !important;
       }
@@ -208,6 +292,16 @@
           Disconnect
         </button>
         <p id="disconnect-status" class="status" hidden></p>
+      </section>
+
+      <section class="watermark-section" aria-labelledby="watermark-heading">
+        <h2 id="watermark-heading">Synced conversations</h2>
+        <p class="helper">
+          Sync progress is stored per conversation. Reset a conversation to sync its full thread again.
+        </p>
+        <p id="watermark-status" class="status" role="alert" hidden></p>
+        <p id="watermark-empty" class="helper" hidden>No conversations synced yet.</p>
+        <ul id="watermark-list" class="watermark-list"></ul>
       </section>
     </main>
     <p id="announce" class="sr-only" role="status"></p>

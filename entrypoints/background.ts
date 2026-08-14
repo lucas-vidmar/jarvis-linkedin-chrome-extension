@@ -5,7 +5,7 @@ import {
   type PopupRequest,
   type SyncEmailReply,
 } from '@/shared/messages';
-import { advanceWatermark, readWatermark } from '@/background/watermark';
+import { advanceWatermark, listWatermarks, readWatermark, resetWatermark } from '@/background/watermark';
 
 const GMAIL_SEND_URL = 'https://gmail.googleapis.com/gmail/v1/users/me/messages/send';
 const GMAIL_SEND_TIMEOUT_MS = 30_000;
@@ -278,6 +278,69 @@ export default defineBackground(() => {
               requestId: message.requestId,
               ok: true,
               data: { watermark: null },
+            });
+          });
+        return true;
+      }
+
+      if (message?.type === 'LIST_WATERMARKS') {
+        listWatermarks()
+          .then((watermarks) => {
+            safeReply({
+              type: 'LIST_WATERMARKS',
+              requestId: message.requestId,
+              ok: true,
+              data: { watermarks },
+            });
+          })
+          .catch(() => {
+            safeReply({
+              type: 'LIST_WATERMARKS',
+              requestId: message.requestId,
+              ok: false,
+              error: {
+                code: 'SEND_FAILED',
+                message: 'Could not load sync history.',
+                retryable: true,
+              },
+            });
+          });
+        return true;
+      }
+
+      if (message?.type === 'RESET_WATERMARK') {
+        if (typeof message.contactUrl !== 'string' || message.contactUrl === '') {
+          safeReply({
+            type: 'RESET_WATERMARK',
+            requestId: message.requestId,
+            ok: false,
+            error: {
+              code: 'SEND_FAILED',
+              message: 'Could not reset sync progress.',
+              retryable: true,
+            },
+          });
+          return false;
+        }
+        resetWatermark(message.contactUrl)
+          .then(() => {
+            safeReply({
+              type: 'RESET_WATERMARK',
+              requestId: message.requestId,
+              ok: true,
+              data: { reset: true },
+            });
+          })
+          .catch(() => {
+            safeReply({
+              type: 'RESET_WATERMARK',
+              requestId: message.requestId,
+              ok: false,
+              error: {
+                code: 'SEND_FAILED',
+                message: 'Could not reset. Try again.',
+                retryable: true,
+              },
             });
           });
         return true;

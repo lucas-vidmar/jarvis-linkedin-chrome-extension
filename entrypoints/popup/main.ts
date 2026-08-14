@@ -11,6 +11,9 @@ const disconnectStatus = document.getElementById('disconnect-status');
 const connectedAccount = document.getElementById('connected-account');
 const announce = document.getElementById('announce');
 const statusDefault = statusRegion?.textContent ?? '';
+const watermarkStatus = document.getElementById('watermark-status');
+const watermarkEmpty = document.getElementById('watermark-empty');
+const watermarkList = document.getElementById('watermark-list');
 
 let connectInFlight = false;
 let disconnectInFlight = false;
@@ -54,6 +57,136 @@ function sendMessage<T extends PopupRequest>(
 function setAnnounce(text: string): void {
   if (announce) {
     announce.textContent = text;
+  }
+}
+
+function showWatermarkStatus(message: string): void {
+  if (watermarkStatus) {
+    watermarkStatus.textContent = message;
+    watermarkStatus.hidden = false;
+  }
+}
+
+function hideWatermarkStatus(): void {
+  if (watermarkStatus) {
+    watermarkStatus.textContent = '';
+    watermarkStatus.hidden = true;
+  }
+}
+
+function cleanContactUrl(contactUrl: string): string {
+  try {
+    const url = new URL(contactUrl);
+    return url.hostname.replace(/^www\./, '') + url.pathname.replace(/\/+$/, '');
+  } catch {
+    return contactUrl;
+  }
+}
+
+function formatSyncedTime(epochMs: number): string {
+  return new Date(epochMs).toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+function renderWatermarks(
+  entries: Array<{ contactUrl: string; syncedAtEpochMs: number }>,
+): void {
+  if (watermarkList) {
+    watermarkList.replaceChildren();
+  }
+  const hasEntries = entries.length > 0;
+  if (watermarkEmpty) {
+    watermarkEmpty.hidden = hasEntries;
+  }
+  if (!watermarkList) {
+    return;
+  }
+  for (const entry of entries) {
+    const row = document.createElement('li');
+    row.className = 'watermark-row';
+
+    const meta = document.createElement('div');
+    meta.className = 'watermark-meta';
+
+    const contact = document.createElement('span');
+    contact.className = 'watermark-contact';
+    contact.textContent = cleanContactUrl(entry.contactUrl);
+
+    const time = document.createElement('span');
+    time.className = 'watermark-time';
+    time.textContent = `Synced ${formatSyncedTime(entry.syncedAtEpochMs)}`;
+
+    meta.append(contact, time);
+
+    const reset = document.createElement('button');
+    reset.type = 'button';
+    reset.className = 'reset-button';
+    reset.textContent = 'Reset';
+    reset.setAttribute('aria-label', `Reset sync progress for ${cleanContactUrl(entry.contactUrl)}`);
+    reset.addEventListener('click', () => {
+      resetWatermarkEntry(entry.contactUrl, reset, row);
+    });
+
+    row.append(meta, reset);
+    watermarkList.append(row);
+  }
+}
+
+async function resetWatermarkEntry(
+  contactUrl: string,
+  button: HTMLButtonElement,
+  row: HTMLElement,
+): Promise<void> {
+  if (button.disabled) {
+    return;
+  }
+  button.disabled = true;
+  hideWatermarkStatus();
+  try {
+    const reply = await sendMessage(
+      { type: 'RESET_WATERMARK', requestId: newRequestId(), contactUrl },
+      STATUS_TIMEOUT_MS,
+    );
+    if (reply.ok) {
+      row.remove();
+      setAnnounce(`Reset sync progress for ${cleanContactUrl(contactUrl)}.`);
+      if (watermarkList && watermarkList.children.length === 0 && watermarkEmpty) {
+        watermarkEmpty.hidden = false;
+      }
+      return;
+    }
+    showWatermarkStatus(reply.error?.message || 'Could not reset. Try again.');
+  } catch {
+    showWatermarkStatus('Could not reset. Try again.');
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function loadWatermarks(): Promise<void> {
+  try {
+    const reply = await sendMessage(
+      { type: 'LIST_WATERMARKS', requestId: newRequestId() },
+      STATUS_TIMEOUT_MS,
+    );
+    if (!reply.ok) {
+      showWatermarkStatus(reply.error?.message || 'Could not load sync history.');
+      return;
+    }
+    hideWatermarkStatus();
+    renderWatermarks(
+      reply.data.watermarks.map((entry) => ({
+        contactUrl: entry.contactUrl,
+        syncedAtEpochMs: entry.watermark.syncedAtEpochMs,
+      })),
+    );
+  } catch {
+    showWatermarkStatus('Could not load sync history.');
   }
 }
 
@@ -215,6 +348,7 @@ async function reconcileAfterTimeout(): Promise<void> {
 
 function init(): void {
   void loadAuthStatus();
+  void loadWatermarks();
 
   connectButton?.addEventListener('click', async () => {
     if (connectButton.disabled || connectInFlight) {
