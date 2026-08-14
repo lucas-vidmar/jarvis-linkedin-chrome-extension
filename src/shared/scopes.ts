@@ -1,8 +1,7 @@
 export type ScopeId =
   | 'selected'
-  | 'today'
   | 'since-last-sync'
-  | 'last-24-hours'
+  | 'last-day'
   | 'last-week'
   | 'entire-thread';
 
@@ -14,9 +13,8 @@ export interface ScopeOption {
 
 export const SCOPE_OPTIONS: readonly ScopeOption[] = [
   { id: 'selected', label: 'Selected messages', caption: 'Pick messages by clicking them' },
-  { id: 'today', label: 'Today', caption: 'Messages sent today' },
   { id: 'since-last-sync', label: 'Since last sync', caption: 'New since your last sync' },
-  { id: 'last-24-hours', label: 'Last 24 hours', caption: 'Messages from the last 24 hours' },
+  { id: 'last-day', label: 'Last day', caption: 'Messages from the last 24 hours' },
   { id: 'last-week', label: 'Last week', caption: 'Messages from the last week' },
   { id: 'entire-thread', label: 'Entire thread', caption: 'All loaded messages' },
 ];

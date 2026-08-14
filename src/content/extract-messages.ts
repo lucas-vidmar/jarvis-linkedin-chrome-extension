@@ -19,6 +19,15 @@ const MONTHS: Record<string, number> = {
 
 const DAY_HEADER_RE = /^([A-Za-z]{3})[a-z]*\s+(\d{1,2})(?:,\s*(\d{4}))?$/;
 const TIME_RE = /^(\d{1,2}):(\d{2})\s*([AP]M)?$/i;
+const WEEKDAY_INDEX: Record<string, number> = {
+  sunday: 0,
+  monday: 1,
+  tuesday: 2,
+  wednesday: 3,
+  thursday: 4,
+  friday: 5,
+  saturday: 6,
+};
 
 function readText(row: HTMLElement): string {
   for (const selector of SELECTORS.messageText) {
@@ -52,6 +61,12 @@ function resolveDayHeader(value: string, now: Date): Date | null {
   if (trimmed === 'yesterday') {
     const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 12);
     return yesterday;
+  }
+  const weekdayIndex = WEEKDAY_INDEX[trimmed];
+  if (weekdayIndex !== undefined) {
+    const target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12);
+    const daysBack = (target.getDay() - weekdayIndex + 7) % 7;
+    return new Date(target.getFullYear(), target.getMonth(), target.getDate() - daysBack, 12);
   }
   const match = DAY_HEADER_RE.exec(value.trim());
   if (!match) return null;
