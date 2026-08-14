@@ -1,6 +1,7 @@
 export const GMAIL_SEND_SCOPE = 'https://www.googleapis.com/auth/gmail.send';
 
 import type { JarvisEnvelope } from '@/shared/composer';
+import type { WatermarkValue } from '@/shared/watermark';
 
 export type RequestType =
   | 'GET_AUTH_STATUS'
@@ -8,7 +9,8 @@ export type RequestType =
   | 'DISCONNECT_GOOGLE'
   | 'SEND_SYNC_EMAIL'
   | 'OPEN_DRAFT_FALLBACK'
-  | 'CONFIRM_DRAFT_SENT';
+  | 'CONFIRM_DRAFT_SENT'
+  | 'READ_WATERMARK';
 
 interface BaseRequest {
   requestId: string;
@@ -46,13 +48,19 @@ export interface ConfirmDraftSentRequest extends BaseRequest {
   composedAtEpochMs: number;
 }
 
+export interface ReadWatermarkRequest extends BaseRequest {
+  type: 'READ_WATERMARK';
+  contactUrl: string;
+}
+
 export type PopupRequest =
   | GetAuthStatusRequest
   | ConnectGoogleRequest
   | DisconnectGoogleRequest
   | SendSyncEmailRequest
   | OpenDraftFallbackRequest
-  | ConfirmDraftSentRequest;
+  | ConfirmDraftSentRequest
+  | ReadWatermarkRequest;
 
 export interface AuthStatusResult {
   connected: boolean;
@@ -79,6 +87,10 @@ export interface ConfirmDraftSentResult {
   confirmed: boolean;
 }
 
+export interface ReadWatermarkResult {
+  watermark: WatermarkValue | null;
+}
+
 export type RequestData<T extends RequestType> = T extends 'GET_AUTH_STATUS'
   ? AuthStatusResult
   : T extends 'CONNECT_GOOGLE'
@@ -91,7 +103,9 @@ export type RequestData<T extends RequestType> = T extends 'GET_AUTH_STATUS'
           ? OpenDraftFallbackResult
           : T extends 'CONFIRM_DRAFT_SENT'
             ? ConfirmDraftSentResult
-            : never;
+            : T extends 'READ_WATERMARK'
+              ? ReadWatermarkResult
+              : never;
 
 export interface AppError {
   code: string;

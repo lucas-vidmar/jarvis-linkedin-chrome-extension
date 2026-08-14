@@ -4,7 +4,7 @@ import {
   isScopeEligible,
   type ScopeId,
 } from '@/shared/scopes';
-import { isTimeScope } from '@/shared/scope-filter';
+import { isResolvableScope } from '@/shared/scope-filter';
 import { countVisibleMessages } from '@/content/message-counter';
 
 const STYLE_ID = 'jarvis-scope-dropdown-styles';
@@ -17,6 +17,7 @@ export interface ScopeDropdownOptions {
   anchor: HTMLElement;
   threadRoot: HTMLElement;
   selectedScope: ScopeId;
+  hasWatermark: boolean;
   messageCount: number;
   countForScope?: (scope: ScopeId) => Promise<number>;
   onSync: (scope: ScopeId, messageCount: number) => void | Promise<void>;
@@ -328,7 +329,7 @@ export function openScopeDropdown(options: ScopeDropdownOptions): void {
   const failedByScope = new Set<ScopeId>();
 
   function effectiveCount(): number | null {
-    if (countForScope && isTimeScope(selectedScope)) {
+    if (countForScope && isResolvableScope(selectedScope)) {
       return resolvedCount;
     }
     return messageCount;
@@ -337,7 +338,7 @@ export function openScopeDropdown(options: ScopeDropdownOptions): void {
   function refreshCount(scope: ScopeId): void {
     resolveSeq += 1;
     const seq = resolveSeq;
-    if (!countForScope || !isTimeScope(scope)) {
+    if (!countForScope || !isResolvableScope(scope)) {
       resolvedCount = null;
       countFailed = false;
       refresh();
@@ -412,7 +413,7 @@ export function openScopeDropdown(options: ScopeDropdownOptions): void {
 
   function refresh(): void {
     const count = effectiveCount();
-    const failed = countForScope && isTimeScope(selectedScope) && countFailed;
+    const failed = countForScope && isResolvableScope(selectedScope) && countFailed;
     const eligible = !pending && isScopeEligible(selectedScope) && (count ?? 0) >= 1 && !failed;
     confirmButton.disabled = !eligible;
     hint.textContent = failed ? "Couldn't read messages — reopen to try again." : computeHint(selectedScope, count);
@@ -433,7 +434,7 @@ export function openScopeDropdown(options: ScopeDropdownOptions): void {
   }
 
   for (const scope of SCOPE_OPTIONS) {
-    const row = createRow(scope, scope.id === selectedScope, false, applySelection);
+    const row = createRow(scope, scope.id === selectedScope, options.hasWatermark, applySelection);
     rows.set(scope.id, row);
     group.appendChild(row);
   }

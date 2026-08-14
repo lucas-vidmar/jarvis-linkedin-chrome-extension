@@ -25,6 +25,7 @@ import { composeJarvisEnvelope } from '@/shared/composer';
 import { filterMessagesByScope } from '@/shared/scope-filter';
 import { setPendingScope, setPendingEnvelope } from '@/content/sync-state';
 import { extractMessages } from '@/content/extract-messages';
+import { readWatermark } from '@/content/read-watermark';
 import { sendSyncEmail } from '@/content/send-sync';
 import { confirmDraftSent, openDraftFallback } from '@/content/draft-fallback';
 import { showSyncError, showSyncInProgress, showSyncPrompt, showSyncSuccess, dismissSyncNotices } from '@/content/sync-notice';
@@ -158,46 +159,62 @@ function openDropdownForButton(
 ): void {
   const messageCount = countVisibleMessages(threadRoot);
   const extraction = extractMessages(threadRoot, contact);
-  const countForScope = async (scope: ScopeId): Promise<number> => {
-    const messages = await extraction;
-    return filterMessagesByScope(messages, scope, new Date()).length;
-  };
-  openScopeDropdown({
-    anchor: button,
-    threadRoot,
-    selectedScope: defaultScope(false),
-    messageCount,
-    countForScope,
-    onSync: async (scope) => {
-      let extracted: ComposerMessage[];
-      try {
-        extracted = await extractMessages(threadRoot, contact);
-      } catch {
-        showSyncError('Could not read the conversation. Try again.');
-        return;
-      }
-      const messages = filterMessagesByScope(extracted, scope, new Date());
-      if (messages.length === 0) {
-        showSyncError('Nothing to sync in this window yet.');
-        return;
-      }
-      const cleanUrl = (await resolveCleanProfileUrl(contact.contactUrl)) ?? contact.contactUrl;
-      const envelope = composeJarvisEnvelope({
-        contactName: contact.contactName,
-        contactUrl: cleanUrl,
-        selfName: getSelfName(document),
-        scope,
-        syncedAt: new Date(),
-        messages,
+  void readWatermark(contact.contactUrl)
+    .then((watermark) => {
+      if (isScopeDropdownOpen()) return;
+      if (!button.isConnected || !threadRoot.isConnected) return;
+      const hasWatermark = watermark !== null;
+      const countForScope = async (scope: ScopeId): Promise<number> => {
+        const messages = await extraction;
+        return filterMessagesByScope(messages, scope, new Date(), {
+          watermarkFingerprint: watermark?.fingerprint ?? null,
+        }).length;
+      };
+      openScopeDropdown({
+        anchor: button,
+        threadRoot,
+        selectedScope: defaultScope(hasWatermark),
+        hasWatermark,
+        messageCount,
+        countForScope,
+        onSync: async (scope) => {
+          let extracted: ComposerMessage[];
+          try {
+            extracted = await extractMessages(threadRoot, contact);
+          } catch {
+            showSyncError('Could not read the conversation. Try again.');
+            return;
+          }
+          const freshWatermark = await readWatermark(contact.contactUrl);
+          const messages = filterMessagesByScope(extracted, scope, new Date(), {
+            watermarkFingerprint: freshWatermark?.fingerprint ?? null,
+          });
+          if (messages.length === 0) {
+            showSyncError('Nothing to sync in this window yet.');
+            return;
+          }
+          const cleanUrl = (await resolveCleanProfileUrl(contact.contactUrl)) ?? contact.contactUrl;
+          const envelope = composeJarvisEnvelope({
+            contactName: contact.contactName,
+            contactUrl: cleanUrl,
+            selfName: getSelfName(document),
+            scope,
+            syncedAt: new Date(),
+            messages,
+          });
+          setPendingScope(scope);
+          setPendingEnvelope(envelope);
+          return attemptSend(contact.contactUrl, envelope);
+        },
+        onCancel: () => {
+          closeScopeDropdown();
+        },
       });
-      setPendingScope(scope);
-      setPendingEnvelope(envelope);
-      return attemptSend(contact.contactUrl, envelope);
-    },
-    onCancel: () => {
-      closeScopeDropdown();
-    },
-  });
+    })
+    .catch(() => {
+      // The watermark read failed before the dropdown opened; do not show a
+      // dead button with no feedback, but avoid opening a stale dropdown.
+    });
 }
 
 function mountButton(

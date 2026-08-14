@@ -5,7 +5,7 @@ import {
   type PopupRequest,
   type SyncEmailReply,
 } from '@/shared/messages';
-import { advanceWatermark } from '@/background/watermark';
+import { advanceWatermark, readWatermark } from '@/background/watermark';
 
 const GMAIL_SEND_URL = 'https://gmail.googleapis.com/gmail/v1/users/me/messages/send';
 const GMAIL_SEND_TIMEOUT_MS = 30_000;
@@ -245,6 +245,44 @@ export default defineBackground(() => {
         return false;
       }
 
+      const safeReply = (reply: PopupReply): void => {
+        try {
+          sendResponse(reply);
+        } catch {
+          // Popup closed before the reply could be delivered; nothing to surface.
+        }
+      };
+
+      if (message?.type === 'READ_WATERMARK') {
+        if (typeof message.contactUrl !== 'string' || message.contactUrl === '') {
+          safeReply({
+            type: 'READ_WATERMARK',
+            requestId: message.requestId,
+            ok: true,
+            data: { watermark: null },
+          });
+          return false;
+        }
+        readWatermark(message.contactUrl)
+          .then((watermark) => {
+            safeReply({
+              type: 'READ_WATERMARK',
+              requestId: message.requestId,
+              ok: true,
+              data: { watermark },
+            });
+          })
+          .catch(() => {
+            safeReply({
+              type: 'READ_WATERMARK',
+              requestId: message.requestId,
+              ok: true,
+              data: { watermark: null },
+            });
+          });
+        return true;
+      }
+
       if (!chrome.identity) {
         sendResponse(
           authErrorReply(
@@ -255,14 +293,6 @@ export default defineBackground(() => {
         );
         return false;
       }
-
-      const safeReply = (reply: PopupReply): void => {
-        try {
-          sendResponse(reply);
-        } catch {
-          // Popup closed before the reply could be delivered; nothing to surface.
-        }
-      };
 
       if (message?.type === 'GET_AUTH_STATUS') {
         chrome.identity

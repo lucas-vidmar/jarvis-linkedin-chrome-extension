@@ -10,6 +10,30 @@ export function isTimeScope(scope: ScopeId): boolean {
   return TIME_SCOPES.includes(scope);
 }
 
+export function isResolvableScope(scope: ScopeId): boolean {
+  return scope === 'since-last-sync' || isTimeScope(scope);
+}
+
+export interface ScopeFilterOptions {
+  watermarkFingerprint?: string | null;
+}
+
+function filterSinceLastSync(
+  messages: ComposerMessage[],
+  watermarkFingerprint: string | null | undefined,
+): ComposerMessage[] {
+  if (!watermarkFingerprint) {
+    return messages;
+  }
+  const boundary = messages.findLastIndex(
+    (message) => message.fingerprint === watermarkFingerprint,
+  );
+  if (boundary < 0) {
+    return messages;
+  }
+  return messages.slice(boundary + 1);
+}
+
 function isWithinWindow(message: ComposerMessage, scope: ScopeId, now: Date): boolean {
   if (message.timestampMs === null) return true;
   const threshold =
@@ -21,7 +45,11 @@ export function filterMessagesByScope(
   messages: ComposerMessage[],
   scope: ScopeId,
   now: Date,
+  options: ScopeFilterOptions = {},
 ): ComposerMessage[] {
+  if (scope === 'since-last-sync') {
+    return filterSinceLastSync(messages, options.watermarkFingerprint);
+  }
   if (!TIME_SCOPES.includes(scope)) return messages;
   return messages.filter((message) => isWithinWindow(message, scope, now));
 }
