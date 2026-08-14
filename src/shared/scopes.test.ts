@@ -28,6 +28,14 @@ describe('scopes', () => {
     expect(getScopeCaption('since-last-sync', true)).not.toContain('first sync');
   });
 
+  it('annotates the entire-thread caption when the thread is truncated', () => {
+    expect(getScopeCaption('entire-thread', false)).toBe('All loaded messages');
+    expect(getScopeCaption('entire-thread', true)).toBe('All loaded messages');
+    expect(getScopeCaption('entire-thread', false, true)).toContain('thread truncated');
+    expect(getScopeCaption('entire-thread', true, true)).toContain('thread truncated');
+    expect(getScopeCaption('last-day', false, true)).toBe('Messages from the last 24 hours');
+  });
+
   it('isScopeEligible rejects only the selected scope', () => {
     expect(isScopeEligible('since-last-sync')).toBe(true);
     expect(isScopeEligible('entire-thread')).toBe(true);

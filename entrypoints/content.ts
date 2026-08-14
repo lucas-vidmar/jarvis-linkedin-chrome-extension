@@ -26,6 +26,7 @@ import { filterMessagesByScope } from '@/shared/scope-filter';
 import { setPendingScope, setPendingEnvelope } from '@/content/sync-state';
 import { extractMessages } from '@/content/extract-messages';
 import { readWatermark } from '@/content/read-watermark';
+import { detectThreadTruncation } from '@/content/thread-truncation';
 import { sendSyncEmail } from '@/content/send-sync';
 import { confirmDraftSent, openDraftFallback } from '@/content/draft-fallback';
 import { showSyncError, showSyncInProgress, showSyncPrompt, showSyncSuccess, dismissSyncNotices } from '@/content/sync-notice';
@@ -175,6 +176,7 @@ function openDropdownForButton(
         threadRoot,
         selectedScope: defaultScope(hasWatermark),
         hasWatermark,
+        threadTruncated: detectThreadTruncation(threadRoot),
         messageCount,
         countForScope,
         onSync: async (scope) => {

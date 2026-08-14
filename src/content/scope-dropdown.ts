@@ -6,6 +6,7 @@ import {
 } from '@/shared/scopes';
 import { isResolvableScope } from '@/shared/scope-filter';
 import { countVisibleMessages } from '@/content/message-counter';
+import { detectThreadTruncation } from '@/content/thread-truncation';
 
 const STYLE_ID = 'jarvis-scope-dropdown-styles';
 const PANEL_WIDTH = 280;
@@ -18,6 +19,7 @@ export interface ScopeDropdownOptions {
   threadRoot: HTMLElement;
   selectedScope: ScopeId;
   hasWatermark: boolean;
+  threadTruncated?: boolean;
   messageCount: number;
   countForScope?: (scope: ScopeId) => Promise<number>;
   onSync: (scope: ScopeId, messageCount: number) => void | Promise<void>;
@@ -241,7 +243,9 @@ function createRow(
   scope: (typeof SCOPE_OPTIONS)[number],
   checked: boolean,
   hasWatermark: boolean,
+  threadTruncated: boolean,
   onSelect: (scope: ScopeId) => void,
+  captions: Map<ScopeId, HTMLElement>,
 ): HTMLElement {
   const row = document.createElement('div');
   row.className = 'jarvis-scope-dropdown__row';
@@ -260,7 +264,8 @@ function createRow(
   label.textContent = scope.label;
   const caption = document.createElement('span');
   caption.className = 'jarvis-scope-dropdown__caption';
-  caption.textContent = getScopeCaption(scope.id, hasWatermark);
+  caption.textContent = getScopeCaption(scope.id, hasWatermark, threadTruncated);
+  captions.set(scope.id, caption);
   copy.append(label, caption);
 
   row.append(radio, copy);
@@ -319,8 +324,10 @@ export function openScopeDropdown(options: ScopeDropdownOptions): void {
 
   let selectedScope = options.selectedScope;
   let messageCount = options.messageCount;
+  let threadTruncated = options.threadTruncated ?? false;
   let pending = false;
   const rows = new Map<ScopeId, HTMLElement>();
+  const captions = new Map<ScopeId, HTMLElement>();
   const countForScope = options.countForScope;
   let resolvedCount: number | null = null;
   let countFailed = false;
@@ -433,8 +440,21 @@ export function openScopeDropdown(options: ScopeDropdownOptions): void {
     refreshCount(scope);
   }
 
+  function refreshTruncationCaption(): void {
+    const caption = captions.get('entire-thread');
+    if (!caption) return;
+    caption.textContent = getScopeCaption('entire-thread', options.hasWatermark, threadTruncated);
+  }
+
   for (const scope of SCOPE_OPTIONS) {
-    const row = createRow(scope, scope.id === selectedScope, options.hasWatermark, applySelection);
+    const row = createRow(
+      scope,
+      scope.id === selectedScope,
+      options.hasWatermark,
+      threadTruncated,
+      applySelection,
+      captions,
+    );
     rows.set(scope.id, row);
     group.appendChild(row);
   }
@@ -532,6 +552,11 @@ export function openScopeDropdown(options: ScopeDropdownOptions): void {
       if (nextCount !== messageCount) {
         messageCount = nextCount;
         refresh();
+      }
+      const nextTruncated = detectThreadTruncation(options.threadRoot);
+      if (nextTruncated !== threadTruncated) {
+        threadTruncated = nextTruncated;
+        refreshTruncationCaption();
       }
     });
   };
