@@ -22,6 +22,7 @@ export interface ScopeDropdownOptions {
   threadTruncated?: boolean;
   messageCount: number;
   countForScope?: (scope: ScopeId) => Promise<number>;
+  onSelectSelected?: () => void;
   onSync: (scope: ScopeId, messageCount: number) => void | Promise<void>;
   onCancel: () => void;
 }
@@ -226,6 +227,9 @@ function removeStyles(): void {
 }
 
 function computeHint(scope: ScopeId, messageCount: number | null): string {
+  if (scope === 'selected') {
+    return 'Pick messages by clicking them';
+  }
   if (!isScopeEligible(scope)) {
     return 'Selection arrives in a later story.';
   }
@@ -244,7 +248,7 @@ function createRow(
   checked: boolean,
   hasWatermark: boolean,
   threadTruncated: boolean,
-  onSelect: (scope: ScopeId) => void,
+  activate: (scope: ScopeId) => void,
   captions: Map<ScopeId, HTMLElement>,
 ): HTMLElement {
   const row = document.createElement('div');
@@ -270,13 +274,13 @@ function createRow(
 
   row.append(radio, copy);
   row.addEventListener('click', () => {
-    onSelect(scope.id);
+    activate(scope.id);
     row.focus();
   });
   row.addEventListener('keydown', (event) => {
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
-      onSelect(scope.id);
+      activate(scope.id);
     }
   });
   return row;
@@ -440,6 +444,15 @@ export function openScopeDropdown(options: ScopeDropdownOptions): void {
     refreshCount(scope);
   }
 
+  function activateScope(scope: ScopeId): void {
+    if (pending) return;
+    if (scope === 'selected' && options.onSelectSelected) {
+      options.onSelectSelected();
+      return;
+    }
+    applySelection(scope);
+  }
+
   function refreshTruncationCaption(): void {
     const caption = captions.get('entire-thread');
     if (!caption) return;
@@ -452,7 +465,7 @@ export function openScopeDropdown(options: ScopeDropdownOptions): void {
       scope.id === selectedScope,
       options.hasWatermark,
       threadTruncated,
-      applySelection,
+      activateScope,
       captions,
     );
     rows.set(scope.id, row);

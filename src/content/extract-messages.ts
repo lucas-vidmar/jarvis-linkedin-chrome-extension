@@ -108,8 +108,17 @@ function readSender(row: HTMLElement): SenderKey {
   return 'self';
 }
 
-export async function extractMessages(root: HTMLElement, contact: ContactRef, now = new Date()): Promise<ComposerMessage[]> {
-  const messages: ComposerMessage[] = [];
+export interface ExtractedRow {
+  row: HTMLElement;
+  message: ComposerMessage;
+}
+
+export async function extractMessagesWithRows(
+  root: HTMLElement,
+  contact: ContactRef,
+  now = new Date(),
+): Promise<ExtractedRow[]> {
+  const entries: ExtractedRow[] = [];
   let currentDay: Date | null = null;
   let carryTimestamp: number | null = null;
 
@@ -139,20 +148,28 @@ export async function extractMessages(root: HTMLElement, contact: ContactRef, no
           if (ownTimestamp !== null) {
             carryTimestamp = ownTimestamp;
           }
-          messages.push({
-            senderKey,
-            timestampMs,
-            text,
-            fingerprint: await computeMessageFingerprint({
-              senderKey: senderKey === 'self' ? 'self' : contact.contactUrl,
-              epochMs: timestampMs,
+          entries.push({
+            row,
+            message: {
+              senderKey,
+              timestampMs,
               text,
-            }),
+              fingerprint: await computeMessageFingerprint({
+                senderKey: senderKey === 'self' ? 'self' : contact.contactUrl,
+                epochMs: timestampMs,
+                text,
+              }),
+            },
           });
         }
       }
     }
   }
 
-  return messages;
+  return entries;
+}
+
+export async function extractMessages(root: HTMLElement, contact: ContactRef, now = new Date()): Promise<ComposerMessage[]> {
+  const entries = await extractMessagesWithRows(root, contact, now);
+  return entries.map((entry) => entry.message);
 }

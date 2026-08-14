@@ -25,6 +25,11 @@ import { composeJarvisEnvelope } from '@/shared/composer';
 import { filterMessagesByScope } from '@/shared/scope-filter';
 import { setPendingScope, setPendingEnvelope } from '@/content/sync-state';
 import { extractMessages } from '@/content/extract-messages';
+import {
+  enterSelectionMode,
+  exitSelectionMode,
+  isSelectionModeActive,
+} from '@/content/selection-mode';
 import { readWatermark } from '@/content/read-watermark';
 import { detectThreadTruncation } from '@/content/thread-truncation';
 import { sendSyncEmail } from '@/content/send-sync';
@@ -179,6 +184,14 @@ function openDropdownForButton(
         threadTruncated: detectThreadTruncation(threadRoot),
         messageCount,
         countForScope,
+        onSelectSelected: () => {
+          closeScopeDropdown();
+          enterSelectionMode({
+            threadRoot,
+            contact,
+            onSync: (messages) => composeAndSend(contact, 'selected', messages),
+          });
+        },
         onSync: async (scope) => {
           let extracted: ComposerMessage[];
           try {
@@ -191,22 +204,7 @@ function openDropdownForButton(
           const messages = filterMessagesByScope(extracted, scope, new Date(), {
             watermarkFingerprint: freshWatermark?.fingerprint ?? null,
           });
-          if (messages.length === 0) {
-            showSyncError('Nothing to sync in this window yet.');
-            return;
-          }
-          const cleanUrl = (await resolveCleanProfileUrl(contact.contactUrl)) ?? contact.contactUrl;
-          const envelope = composeJarvisEnvelope({
-            contactName: contact.contactName,
-            contactUrl: cleanUrl,
-            selfName: getSelfName(document),
-            scope,
-            syncedAt: new Date(),
-            messages,
-          });
-          setPendingScope(scope);
-          setPendingEnvelope(envelope);
-          return attemptSend(contact.contactUrl, envelope);
+          return composeAndSend(contact, scope, messages);
         },
         onCancel: () => {
           closeScopeDropdown();
@@ -219,11 +217,44 @@ function openDropdownForButton(
     });
 }
 
+function composeAndSend(
+  contact: { contactName: string; contactUrl: string },
+  scope: ScopeId,
+  messages: ComposerMessage[],
+): Promise<void> {
+  if (messages.length === 0) {
+    showSyncError('Nothing to sync in this window yet.');
+    return Promise.resolve();
+  }
+  return resolveCleanProfileUrl(contact.contactUrl)
+    .then((cleanUrl) => {
+      const envelope = composeJarvisEnvelope({
+        contactName: contact.contactName,
+        contactUrl: cleanUrl ?? contact.contactUrl,
+        selfName: getSelfName(document),
+        scope,
+        syncedAt: new Date(),
+        messages,
+      });
+      setPendingScope(scope);
+      setPendingEnvelope(envelope);
+      return attemptSend(contact.contactUrl, envelope);
+    })
+    .catch((error: { message?: string }) => {
+      console.log('[jarvis-sync] send preparation failed:', error?.message ?? '');
+      showSyncError("Couldn't sync — try again.");
+    });
+}
+
 function mountButton(
   root: HTMLElement,
   contact: { contactName: string; contactUrl: string },
 ): void {
   mountSyncButton(root, contact, (button) => {
+    if (isSelectionModeActive()) {
+      exitSelectionMode();
+      return;
+    }
     if (isScopeDropdownOpen()) {
       closeScopeDropdown();
       return;
@@ -245,6 +276,7 @@ function unmountAndReset(): void {
     maxWaitTimer = undefined;
   }
   closeScopeDropdown();
+  exitSelectionMode();
   setPendingScope(null);
   setPendingEnvelope(null);
   dismissSyncNotices();
