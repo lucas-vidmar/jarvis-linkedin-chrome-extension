@@ -6,6 +6,7 @@ import {
   type SyncEmailReply,
 } from '@/shared/messages';
 import { advanceWatermark, listWatermarks, readWatermark, resetWatermark } from '@/background/watermark';
+import { readRecipient, saveRecipient } from '@/background/recipient';
 
 const GMAIL_SEND_URL = 'https://gmail.googleapis.com/gmail/v1/users/me/messages/send';
 const GMAIL_SEND_TIMEOUT_MS = 30_000;
@@ -339,6 +340,69 @@ export default defineBackground(() => {
               error: {
                 code: 'SEND_FAILED',
                 message: 'Could not reset. Try again.',
+                retryable: true,
+              },
+            });
+          });
+        return true;
+      }
+
+      if (message?.type === 'GET_SYNC_RECIPIENT') {
+        readRecipient()
+          .then((state) => {
+            safeReply({
+              type: 'GET_SYNC_RECIPIENT',
+              requestId: message.requestId,
+              ok: true,
+              data: state,
+            });
+          })
+          .catch(() => {
+            safeReply({
+              type: 'GET_SYNC_RECIPIENT',
+              requestId: message.requestId,
+              ok: false,
+              error: {
+                code: 'SEND_FAILED',
+                message: 'Could not load the sync recipient.',
+                retryable: true,
+              },
+            });
+          });
+        return true;
+      }
+
+      if (message?.type === 'SET_SYNC_RECIPIENT') {
+        if (typeof message.recipient !== 'string') {
+          safeReply({
+            type: 'SET_SYNC_RECIPIENT',
+            requestId: message.requestId,
+            ok: false,
+            error: {
+              code: 'SEND_FAILED',
+              message: 'Could not save the sync recipient.',
+              retryable: true,
+            },
+          });
+          return false;
+        }
+        saveRecipient(message.recipient)
+          .then((recipient) => {
+            safeReply({
+              type: 'SET_SYNC_RECIPIENT',
+              requestId: message.requestId,
+              ok: true,
+              data: { recipient },
+            });
+          })
+          .catch(() => {
+            safeReply({
+              type: 'SET_SYNC_RECIPIENT',
+              requestId: message.requestId,
+              ok: false,
+              error: {
+                code: 'SEND_FAILED',
+                message: 'That email address does not look valid. Try again.',
                 retryable: true,
               },
             });

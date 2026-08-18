@@ -31,6 +31,7 @@ import {
   isSelectionModeActive,
 } from '@/content/selection-mode';
 import { readWatermark } from '@/content/read-watermark';
+import { readSyncRecipient } from '@/content/read-recipient';
 import { detectThreadTruncation } from '@/content/thread-truncation';
 import { sendSyncEmail } from '@/content/send-sync';
 import { confirmDraftSent, openDraftFallback } from '@/content/draft-fallback';
@@ -226,20 +227,23 @@ function composeAndSend(
     showSyncError('Nothing to sync in this window yet.');
     return Promise.resolve();
   }
-  return resolveCleanProfileUrl(contact.contactUrl)
-    .then((cleanUrl) => {
-      const envelope = composeJarvisEnvelope({
-        contactName: contact.contactName,
-        contactUrl: cleanUrl ?? contact.contactUrl,
-        selfName: getSelfName(document),
-        scope,
-        syncedAt: new Date(),
-        messages,
-      });
-      setPendingScope(scope);
-      setPendingEnvelope(envelope);
-      return attemptSend(contact.contactUrl, envelope);
-    })
+  return Promise.all([
+    resolveCleanProfileUrl(contact.contactUrl),
+    readSyncRecipient(),
+  ]).then(([cleanUrl, recipient]) => {
+    const envelope = composeJarvisEnvelope({
+      contactName: contact.contactName,
+      contactUrl: cleanUrl ?? contact.contactUrl,
+      selfName: getSelfName(document),
+      scope,
+      syncedAt: new Date(),
+      messages,
+      recipient,
+    });
+    setPendingScope(scope);
+    setPendingEnvelope(envelope);
+    return attemptSend(contact.contactUrl, envelope);
+  })
     .catch((error: { message?: string }) => {
       console.log('[jarvis-sync] send preparation failed:', error?.message ?? '');
       showSyncError("Couldn't sync — try again.");

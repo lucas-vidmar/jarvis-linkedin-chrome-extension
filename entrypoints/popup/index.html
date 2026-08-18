@@ -262,6 +262,72 @@
         cursor: default;
       }
 
+      .settings-section {
+        padding: 16px 20px 20px;
+        border-top: 1px solid #eceef2;
+      }
+
+      .settings-section h2 {
+        margin: 0 0 4px;
+        font-size: 14px;
+        font-weight: 700;
+        line-height: 1.4;
+      }
+
+      .settings-section .helper {
+        margin: 0 0 8px;
+      }
+
+      .recipient-row {
+        display: flex;
+        gap: 8px;
+      }
+
+      .recipient-input {
+        flex: 1;
+        min-width: 0;
+        padding: 8px 10px;
+        font: inherit;
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--ink);
+        background: var(--surface);
+        border: 1px solid #d0d5dd;
+        border-radius: 6px;
+      }
+
+      .recipient-input:focus-visible {
+        outline: 2px solid var(--focus-ring);
+        outline-offset: 1px;
+      }
+
+      .recipient-save {
+        flex: none;
+        padding: 8px 12px;
+        font: inherit;
+        font-size: 12px;
+        font-weight: 600;
+        color: #ffffff;
+        background: var(--brand-indigo);
+        border: 1px solid transparent;
+        border-radius: 6px;
+        cursor: pointer;
+      }
+
+      .recipient-save:hover:not(:disabled) {
+        background: var(--brand-indigo-dark);
+      }
+
+      .recipient-save:focus-visible {
+        outline: 2px solid var(--focus-ring);
+        outline-offset: 2px;
+      }
+
+      .recipient-save:disabled {
+        opacity: 0.6;
+        cursor: default;
+      }
+
       [hidden] {
         display: none !important;
       }
@@ -292,6 +358,28 @@
           Disconnect
         </button>
         <p id="disconnect-status" class="status" hidden></p>
+      </section>
+
+      <section class="settings-section" aria-labelledby="recipient-heading">
+        <h2 id="recipient-heading">Sync recipient</h2>
+        <p class="helper">
+          Sync emails are sent to this address. Leave it blank to use the default.
+        </p>
+        <label class="sr-only" for="recipient-input">Sync recipient email</label>
+        <div class="recipient-row">
+          <input
+            id="recipient-input"
+            class="recipient-input"
+            type="email"
+            spellcheck="false"
+            placeholder="jarvis@agileengine.com"
+            autocomplete="off"
+          />
+          <button id="recipient-save" type="button" class="recipient-save">
+            Save
+          </button>
+        </div>
+        <p id="recipient-status" class="status" role="status" aria-live="polite" hidden></p>
       </section>
 
       <section class="watermark-section" aria-labelledby="watermark-heading">

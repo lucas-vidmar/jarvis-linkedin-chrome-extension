@@ -142,14 +142,23 @@ npm run validate:manifest  # post-build manifest sanity checks
 ## Configuration
 
 `gmail.send` OAuth is configured via `chrome.identity` (the client ID lives in
-`wxt.config.ts`). Create a `.env` from `.env.example` to override the sync
-recipient for testing without emailing Jarvis:
+`wxt.config.ts`).
+
+**Sync recipient** — runtime-configurable, no coding or rebuild needed. Open the
+extension popup → **Sync recipient**, enter any email address, and hit **Save**.
+It's stored in `chrome.storage.sync`, so the setting persists across restarts and
+roams with your Chrome profile. Leave the field blank and save to reset to the
+default (`jarvis@agileengine.com`).
+
+For development, the *factory default* (used on fresh installs / when nothing is
+saved) can be overridden at build time via a `.env` file copied from
+`.env.example`:
 
 ```bash
 WXT_JARVIS_RECIPIENT=you@example.com
 ```
 
-Without it, emails go to `jarvis@agileengine.com` (the default).
+The popup setting always wins over the build-time value at runtime.
 
 ## Testing
 

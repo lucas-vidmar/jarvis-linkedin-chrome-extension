@@ -1,11 +1,6 @@
 import { SCOPE_OPTIONS, type ScopeId } from '@/shared/scopes';
+import { DEFAULT_SYNC_RECIPIENT } from '@/shared/recipient';
 
-const configuredRecipient: string | undefined = import.meta.env.WXT_JARVIS_RECIPIENT;
-
-export const JARVIS_RECIPIENT =
-  typeof configuredRecipient === 'string' && configuredRecipient.trim() !== ''
-    ? configuredRecipient.trim()
-    : 'jarvis@agileengine.com';
 export const MAX_BODY_CHARS = 10_000;
 
 export type SenderKey = 'self' | 'contact';
@@ -24,6 +19,7 @@ export interface ComposerInput {
   scope: ScopeId;
   syncedAt: Date;
   messages: ComposerMessage[];
+  recipient?: string;
 }
 
 export interface JarvisEnvelope {
@@ -147,7 +143,7 @@ export function composeJarvisEnvelope(input: ComposerInput): JarvisEnvelope {
   const lastIncluded = includedMessages[includedMessages.length - 1];
 
   return {
-    to: JARVIS_RECIPIENT,
+    to: input.recipient?.trim() || DEFAULT_SYNC_RECIPIENT,
     subject: `LinkedIn sync: ${contactName}`,
     body: parts.join('\n'),
     truncated,

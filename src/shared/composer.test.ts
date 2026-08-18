@@ -3,6 +3,7 @@ import {
   composeJarvisEnvelope,
   type ComposerMessage,
 } from '@/shared/composer';
+import { DEFAULT_SYNC_RECIPIENT } from '@/shared/recipient';
 
 function message(overrides: Partial<ComposerMessage>): ComposerMessage {
   return {
@@ -73,5 +74,28 @@ describe('composeJarvisEnvelope', () => {
     const lines = envelope.body.split('\n').filter((line) => line.startsWith('[Lin]'));
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain('real');
+  });
+
+  it('addresses the envelope to the default recipient unless overridden', () => {
+    const envelope = composeJarvisEnvelope({ ...base, messages: [message({})] });
+    expect(envelope.to).toBe(DEFAULT_SYNC_RECIPIENT);
+  });
+
+  it('uses the provided recipient for the envelope', () => {
+    const envelope = composeJarvisEnvelope({
+      ...base,
+      recipient: 'future@jarvis.example.com',
+      messages: [message({})],
+    });
+    expect(envelope.to).toBe('future@jarvis.example.com');
+  });
+
+  it('ignores a blank recipient and falls back to the default', () => {
+    const envelope = composeJarvisEnvelope({
+      ...base,
+      recipient: '   ',
+      messages: [message({})],
+    });
+    expect(envelope.to).toBe(DEFAULT_SYNC_RECIPIENT);
   });
 });

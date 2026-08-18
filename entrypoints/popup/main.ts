@@ -14,6 +14,9 @@ const statusDefault = statusRegion?.textContent ?? '';
 const watermarkStatus = document.getElementById('watermark-status');
 const watermarkEmpty = document.getElementById('watermark-empty');
 const watermarkList = document.getElementById('watermark-list');
+const recipientInput = document.getElementById('recipient-input') as HTMLInputElement | null;
+const recipientSave = document.getElementById('recipient-save') as HTMLButtonElement | null;
+const recipientStatus = document.getElementById('recipient-status');
 
 let connectInFlight = false;
 let disconnectInFlight = false;
@@ -71,6 +74,67 @@ function hideWatermarkStatus(): void {
   if (watermarkStatus) {
     watermarkStatus.textContent = '';
     watermarkStatus.hidden = true;
+  }
+}
+
+function showRecipientStatus(message: string): void {
+  if (recipientStatus) {
+    recipientStatus.textContent = message;
+    recipientStatus.hidden = false;
+  }
+}
+
+function hideRecipientStatus(): void {
+  if (recipientStatus) {
+    recipientStatus.textContent = '';
+    recipientStatus.hidden = true;
+  }
+}
+
+async function loadRecipient(): Promise<void> {
+  try {
+    const reply = await sendMessage(
+      { type: 'GET_SYNC_RECIPIENT', requestId: newRequestId() },
+      STATUS_TIMEOUT_MS,
+    );
+    if (!reply.ok) {
+      showRecipientStatus(reply.error?.message || 'Could not load the sync recipient.');
+      return;
+    }
+    hideRecipientStatus();
+    if (recipientInput) {
+      recipientInput.value = reply.data.isDefault ? '' : reply.data.recipient;
+    }
+  } catch {
+    showRecipientStatus('Could not load the sync recipient.');
+  }
+}
+
+async function saveRecipient(): Promise<void> {
+  if (!recipientInput || !recipientSave || recipientSave.disabled) {
+    return;
+  }
+  const value = recipientInput.value.trim();
+  recipientSave.disabled = true;
+  hideRecipientStatus();
+  try {
+    const reply = await sendMessage(
+      { type: 'SET_SYNC_RECIPIENT', requestId: newRequestId(), recipient: value },
+      STATUS_TIMEOUT_MS,
+    );
+    if (!reply.ok) {
+      showRecipientStatus(reply.error?.message || 'Could not save the sync recipient.');
+      return;
+    }
+    showRecipientStatus(
+      value === ''
+        ? `Saved — using the default (${reply.data.recipient}).`
+        : `Saved — syncs will be sent to ${reply.data.recipient}.`,
+    );
+  } catch {
+    showRecipientStatus('Could not save the sync recipient.');
+  } finally {
+    recipientSave.disabled = false;
   }
 }
 
@@ -349,6 +413,17 @@ async function reconcileAfterTimeout(): Promise<void> {
 function init(): void {
   void loadAuthStatus();
   void loadWatermarks();
+  void loadRecipient();
+
+  recipientSave?.addEventListener('click', () => {
+    void saveRecipient();
+  });
+  recipientInput?.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      void saveRecipient();
+    }
+  });
 
   connectButton?.addEventListener('click', async () => {
     if (connectButton.disabled || connectInFlight) {
