@@ -37,6 +37,47 @@ This extension automates that, in two directions:
 - **SPA-aware content scripts** — both LinkedIn and Zoho render as single-page
   apps; the extension survives navigation, re-renders, and dynamic DOM churn.
 
+## Screenshots
+
+**Zoho → Jarvis.** On a contact page, the orange rocket button sits right next
+to Zoho's "Send Email" action and opens the same contact in Jarvis.
+
+![Zoho contact page with the Jarvis rocket button next to "Send Email"](assets/screenshots/zoho-jarvis-button.png)
+
+**Extension popup.** Connect/disconnect Google, change the sync recipient (no
+rebuild needed), and review or reset sync history per conversation.
+
+![Extension popup: Google connection, sync recipient setting, and sync history](assets/screenshots/popup-recipient-settings.png)
+
+## Using it
+
+### Sync a LinkedIn conversation to Jarvis
+
+1. Open a conversation thread on LinkedIn Messenger.
+2. Click the **Sync to Jarvis** button that appears above the message box.
+3. Pick a scope in the dropdown:
+   - **Entire thread** — everything in the conversation.
+   - **Since last sync** — only the messages after your last sync (uses the
+     watermark).
+   - **Time windows** (today / last 24 hours / last week) — only messages in
+     that window.
+   - **Select messages** — tick individual messages, then sync just those.
+4. The conversation is emailed to the sync recipient from your Gmail account.
+   On success you'll see **"Synced to Zoho."**; on an auth problem the
+   extension opens a pre-filled Gmail draft — after you send it, hit
+   **Confirm sent** so the progress watermark advances.
+
+### Jump from Zoho to Jarvis
+
+1. Open any contact in Zoho CRM.
+2. Click the orange **🚀** button to the left of "Send Email".
+3. The matching contact opens in Jarvis in a new tab.
+
+### Change where syncs are sent
+
+Open the extension popup → **Sync recipient** → type an email → **Save**.
+Leave the field blank and save to reset to `jarvis@agileengine.com`.
+
 ## How it works
 
 ```
