@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- flame -->
+  <path d="M256 372 L222 462 Q256 492 290 462 Z" fill="#ffb74d"/>
+  <path d="M256 392 L236 446 Q256 466 276 446 Z" fill="#ff8a3d"/>
+  <!-- fins -->
+  <path d="M198 322 L158 398 L198 398 Z" fill="#e65100"/>
+  <path d="M314 322 L354 398 L314 398 Z" fill="#e65100"/>
+  <!-- rocket body -->
+  <path d="M256 56 C 322 122, 338 206, 328 302 C 326 342, 318 382, 316 400 L 196 400 C 194 382, 186 342, 184 302 C 174 206, 190 122, 256 56 Z" fill="#f57c00"/>
+  <!-- window -->
+  <circle cx="256" cy="216" r="46" fill="#ffffff"/>
+  <circle cx="256" cy="216" r="46" fill="none" stroke="#e65100" stroke-width="12"/>
+  <circle cx="242" cy="202" r="14" fill="#ffe0b2"/>
+</svg>
