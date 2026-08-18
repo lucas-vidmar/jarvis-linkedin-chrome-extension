@@ -24,6 +24,7 @@ if (!manifest.permissions?.includes('identity')) {
 
 const requiredHosts = [
   'https://www.linkedin.com/*',
+  'https://crm.zoho.com/*',
   'https://gmail.googleapis.com/*',
   'https://www.googleapis.com/*',
   'https://oauth2.googleapis.com/*',

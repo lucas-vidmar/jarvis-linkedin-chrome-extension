@@ -12,6 +12,7 @@ export default defineConfig({
     },
     host_permissions: [
       'https://www.linkedin.com/*',
+      'https://crm.zoho.com/*',
       'https://gmail.googleapis.com/*',
       'https://www.googleapis.com/*',
       'https://oauth2.googleapis.com/*',
