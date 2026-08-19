@@ -180,6 +180,68 @@ npm run typecheck       # tsc --noEmit
 npm run validate:manifest  # post-build manifest sanity checks
 ```
 
+## Installing for users
+
+The extension isn't on the Chrome Web Store, so it's installed as an **unpacked
+extension** from a built zip. Works in Chrome and any Chromium browser (Edge,
+Brave, Opera).
+
+### Option A — install from a GitHub Release (no build required)
+
+1. Open the **Releases** page and download the latest
+   `linkedin-jarvis-extension-<version>-chrome.zip`.
+2. Unzip it to a folder you'll keep in place (e.g. `~/jarvis-extension`).
+   The unzipped folder must contain `manifest.json` at its top level.
+3. Open `chrome://extensions` and turn on **Developer mode** (top-right).
+4. Click **Load unpacked** and select that folder.
+5. Pin **Jarvis Sync** from the puzzle-piece menu so the popup is easy to reach.
+
+> **Important:** don't move or delete the unzipped folder after installing —
+> an unpacked extension runs from where it was loaded. If you move it, remove
+> and re-add it from the new location.
+
+### Option B — install from source (for developers)
+
+```bash
+git clone https://github.com/lucas-vidmar/jarvis-linkedin-chrome-extension.git
+cd jarvis-linkedin-chrome-extension
+npm install
+npm run build
+```
+
+Then open `chrome://extensions`, enable **Developer mode**, click **Load
+unpacked**, and select the `.output/chrome-mv3` folder.
+
+### After installing
+
+1. Open the popup (puzzle-piece menu → **Jarvis Sync**) and click
+   **Connect with Google** — this grants the `gmail.send` scope used for syncs.
+2. (Optional) Set a **Sync recipient** in the popup if syncs shouldn't go to
+   `jarvis@agileengine.com`.
+3. Open a LinkedIn conversation and look for **Sync to Jarvis** above the
+   message box. Open a Zoho contact and look for the **🚀** button next to
+   "Send Email".
+
+### Updating
+
+There's no auto-update for unpacked extensions. To update:
+
+- **Release install:** download the new zip, unzip over the existing folder,
+  then hit the refresh icon on the extension card in `chrome://extensions`
+  (or remove and re-add it).
+- **Source install:** `git pull && npm run build`, then reload the extension.
+
+### Notes for distribution
+
+- Because the extension isn't in the Web Store, Chrome shows a
+  "developer mode extensions" warning on startup. It's harmless — just dismiss
+  it.
+- `chrome.identity` OAuth is tied to the extension's Google Cloud client.
+  It works out of the box for a single user signing in with their own Google
+  account, but if you plan to distribute it to other people who will sign in
+  with *their own* accounts, the OAuth client must first be published and
+  verified in Google Cloud Console, or their sign-in will be rejected.
+
 ## Configuration
 
 `gmail.send` OAuth is configured via `chrome.identity` (the client ID lives in
