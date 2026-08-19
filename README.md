@@ -226,3 +226,7 @@ permission, and the required host permissions.
   color holds at rest, hover, and pressed.
 - Only `gmail.send` is requested — the extension reads nothing from your inbox
   and can't read messages back.
+
+## License
+
+[MIT](LICENSE)
