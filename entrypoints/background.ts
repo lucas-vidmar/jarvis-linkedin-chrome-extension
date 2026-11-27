@@ -8,6 +8,7 @@ import {
 import { advanceWatermark, listWatermarks, readWatermark, resetWatermark } from '@/background/watermark';
 import { readRecipient, saveRecipient } from '@/background/recipient';
 import { classifyGmailSendError } from '@/shared/gmail-errors';
+import { buildRawMessage } from '@/shared/email';
 
 const GMAIL_SEND_URL = 'https://gmail.googleapis.com/gmail/v1/users/me/messages/send';
 const GMAIL_SEND_TIMEOUT_MS = 30_000;
@@ -35,40 +36,6 @@ function syncErrorReply(
   error: { code: string; message: string; retryable: boolean },
 ): SyncEmailReply {
   return { type: 'SEND_SYNC_EMAIL', requestId, ok: false, error };
-}
-
-function toBase64Url(bytes: Uint8Array): string {
-  let binary = '';
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte);
-  }
-  return btoa(binary)
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
-}
-
-function sanitizeHeaderValue(value: string): string {
-  return value.replace(/[\r\n]+/g, ' ').trim();
-}
-
-function encodeHeaderValue(value: string): string {
-  const ascii = /^[\x00-\x7F]*$/.test(value);
-  if (ascii) return value;
-  const encoded = toBase64Url(new TextEncoder().encode(value));
-  return `=?UTF-8?B?${encoded}?=`;
-}
-
-function buildRawMessage(envelope: { to: string; subject: string; body: string }): string {
-  const headers = [
-    `To: ${sanitizeHeaderValue(envelope.to)}`,
-    `Subject: ${encodeHeaderValue(sanitizeHeaderValue(envelope.subject))}`,
-    `Date: ${new Date().toUTCString()}`,
-    'MIME-Version: 1.0',
-    'Content-Type: text/plain; charset=UTF-8',
-  ].join('\r\n');
-  const raw = `${headers}\r\n\r\n${envelope.body.replace(/\r?\n/g, '\r\n')}`;
-  return toBase64Url(new TextEncoder().encode(raw));
 }
 
 async function sendSyncEmail(
