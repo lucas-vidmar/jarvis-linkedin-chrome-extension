@@ -17,15 +17,16 @@ export default defineConfig({
       // totals reflect the whole `src/` tree rather than only the files a test
       // happened to load.
       include: ['src/**/*.ts'],
-      exclude: ['src/**/*.test.ts', 'src/**/*.d.ts'],
-      // Measured baseline on 2026-11-27: statements 28.96%, branches 32.67%,
-      // functions 38.13%, lines 29.75%. Thresholds sit roughly one point below
+      exclude: ['src/**/*.test.ts', 'src/**/*.d.ts', 'src/**/test-fixtures/**'],
+      // Measured baseline on 2026-11-27 after the LinkedIn DOM test suite,
+      // excluding test fixtures: statements 81.35%, branches 75.59%,
+      // functions 84.77%, lines 83.67%. Thresholds sit roughly one point below
       // so normal churn passes while a real regression fails.
       thresholds: {
-        statements: 28,
-        branches: 31,
-        functions: 37,
-        lines: 29,
+        statements: 80,
+        branches: 75,
+        functions: 84,
+        lines: 82,
       },
     },
   },
