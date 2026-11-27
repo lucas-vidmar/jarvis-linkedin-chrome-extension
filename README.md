@@ -1,14 +1,20 @@
 # Jarvis Sync
 
-A Chrome extension (Manifest V3) that bridges the gap between two of your daily
-tools — **LinkedIn messaging** and **Zoho CRM** — by way of an email-based sync
-to **Jarvis** (`https://jarvis.agileengine.com`).
+A Chrome extension (Manifest V3) that connects **LinkedIn messaging** and
+**Zoho CRM** to **Jarvis** (`https://jarvis.agileengine.com`) with an
+email-based sync.
 
 ## Why does this project exist?
 
-Jarvis is the company's CRM, but conversation work happens in two other places:
-LinkedIn message threads and Zoho CRM contact records. Manually copying every
-exchange into Jarvis is slow, error-prone, and easy to forget.
+Jarvis is the company's CRM and the destination for every sync. Conversation
+work happens in two other places: LinkedIn message threads and Zoho CRM contact
+records. Manually copying every exchange into Jarvis is slow, error-prone, and
+easy to forget.
+
+**Terminology:** **Zoho CRM** is a source system where contact records live; it
+is not where sync emails go. Every sync email is addressed to the configured
+**Jarvis sync recipient** (default `jarvis@agileengine.com`) and sent from your
+own Gmail account.
 
 This extension automates that, in two directions:
 
@@ -27,15 +33,27 @@ This extension automates that, in two directions:
   synced message per contact, so re-syncing only sends what's new.
 - **Scope selection** — sync the full conversation, only new messages, or a
   **manually selected subset** (selection mode).
-- **Gmail draft fallback** — if Google auth fails, it opens a pre-filled Gmail
-  compose draft for manual review; the watermark only advances after you
-  confirm the send.
+- **Gmail compose fallback** — if Google auth fails, it opens a prefilled Gmail
+  compose window in a new tab (not a saved draft) for manual review and sending;
+  the watermark only advances after you confirm the send, and only for scopes
+  that support it.
 - **Sync history** in the popup — see what was synced and when, and reset sync
-  progress for any contact.
+  progress for any conversation.
 - **Zoho contact redirect button** — a branded orange rocket that jumps from a
   Zoho contact record to the same contact in Jarvis.
 - **SPA-aware content scripts** — both LinkedIn and Zoho render as single-page
   apps; the extension survives navigation, re-renders, and dynamic DOM churn.
+
+## Documentation
+
+- [PRIVACY.md](PRIVACY.md) — what the extension reads, sends, and stores, and
+  how to reset or remove that data.
+- [SECURITY.md](SECURITY.md) — private vulnerability reporting, token handling,
+  OAuth caveats, and the unpacked-extension trust model.
+- [CONTRIBUTING.md](CONTRIBUTING.md) — setup, architecture, tests, selector
+  maintenance, and pull-request expectations.
+- [docs/manual-qa.md](docs/manual-qa.md) — the repeatable browser checklist for
+  LinkedIn, Zoho, and the popup.
 
 ## Screenshots
 
@@ -54,18 +72,22 @@ rebuild needed), and review or reset sync history per conversation.
 ### Sync a LinkedIn conversation to Jarvis
 
 1. Open a conversation thread on LinkedIn Messenger.
-2. Click the **Sync to Jarvis** button that appears above the message box.
+2. Click the **Sync** button that appears in the conversation title bar above
+   the message box (its accessible name currently reads "Sync conversation to
+   Zoho CRM").
 3. Pick a scope in the dropdown:
    - **Entire thread** — everything in the conversation.
    - **Since last sync** — only the messages after your last sync (uses the
      watermark).
-   - **Time windows** (today / last 24 hours / last week) — only messages in
-     that window.
+   - **Time windows** (last day / last week) — only messages in that window.
    - **Select messages** — tick individual messages, then sync just those.
-4. The conversation is emailed to the sync recipient from your Gmail account.
-   On success you'll see **"Synced to Zoho."**; on an auth problem the
-   extension opens a pre-filled Gmail draft — after you send it, hit
-   **Confirm sent** so the progress watermark advances.
+4. The conversation is emailed to the configured **Jarvis sync recipient** from
+   your Gmail account. On success you'll currently see **"Synced to Zoho."** —
+   that is a known copy inconsistency: the email goes to Jarvis, not Zoho (see
+   [Known copy inconsistency](#known-copy-inconsistency)). On an auth problem the
+   extension opens a prefilled Gmail compose window in a new tab; it does **not**
+   save a draft. After you send it, hit **Confirm sent** so the progress
+   watermark advances for scopes that support it.
 
 ### Jump from Zoho to Jarvis
 
@@ -103,8 +125,8 @@ Leave the field blank and save to reset to `jarvis@agileengine.com`.
 │ content script                              │
 │  · detects conversation thread (stable,     │
 │    debounced MutationObserver)              │
-│  · renders "Sync to Jarvis" button + scope  │
-│    dropdown / selection mode                │
+│  · renders "Sync" button + scope dropdown / │
+│    selection mode                           │
 │  · extracts messages, filters by scope +    │
 │    watermark                                │
 │  · composes an email envelope               │
@@ -122,16 +144,19 @@ Leave the field blank and save to reset to `jarvis@agileengine.com`.
 ```
 
 The email that Jarvis receives is a plain-text envelope built by
-`src/shared/composer.ts`, addressed to `jarvis@agileengine.com` (overridable —
-see [Configuration](#configuration)), containing the contact, who you are,
-the chosen scope, and the conversation messages.
+`src/shared/composer.ts`, addressed to the configured Jarvis sync recipient
+(`jarvis@agileengine.com` by default — see [Configuration](#configuration)),
+containing the contact, who you are, the chosen scope, and the conversation
+messages. It is sent through the Gmail API from your own account; Zoho is not
+involved in delivery.
 
 ### Key mechanisms
 
 - **Watermarks** (`src/background/watermark.ts`) — stored in
   `chrome.storage.local`, keyed per contact URL. Each entry is
-  `{ fingerprint, syncedAtEpochMs }` where `fingerprint` is the SHA-256 of the
-  last synced message, so incremental sync can tell exactly where you left off.
+  `{ fingerprint, syncedAtEpochMs, lastMessageTimestampMs? }` where `fingerprint`
+  is the SHA-256 of the last synced message, so incremental sync can tell
+  exactly where you left off.
 - **Message fingerprinting** (`src/shared/fingerprint.ts`) — stable content
   hashes used by the watermark and to keep the "already synced" math honest.
 - **Content-script stability** — LinkedIn's thread detection requires two
@@ -139,12 +164,12 @@ the chosen scope, and the conversation messages.
   signatures to avoid remounting on unrelated DOM churn. URL changes (including
   `pushState`/`replaceState`) tear everything down cleanly.
 - **Zoho button** (`src/content/zoho-jarvis-button.ts`) — locates Zoho's
-  "Send Email" control (which is a `<button>`, not an `<a>`), copies its
-  computed styles, re-themes it to the Jarvis orange, and inserts the rocket
-  link *before* it. Removal is driven purely by the URL to avoid stutter during
-  Zoho's re-renders. A capture-phase `stopImmediatePropagation` guard keeps
-  Zoho's "Send Email" click handler from firing when you click the rocket —
-  the new-tab navigation still works.
+  "Send Email" control (the code supports either a `<button>` or an `<a>`),
+  copies its computed styles, re-themes it to the Jarvis orange, and inserts the
+  rocket link *before* it. Removal is driven purely by the URL to avoid stutter
+  during Zoho's re-renders. A capture-phase `stopImmediatePropagation` guard
+  keeps Zoho's "Send Email" click handler from firing when you click the rocket
+  — the new-tab navigation still works.
 - **URL mapping** (`src/shared/zoho-url.ts`) — the canonical list of supported
   Zoho data-center hosts plus a pure function mapping a Zoho contact record URL
   to its Jarvis equivalent, or `null` when the page isn't a contact detail page.
@@ -154,20 +179,27 @@ the chosen scope, and the conversation messages.
 
 ```
 entrypoints/
-  background.ts        MV3 service worker: OAuth, Gmail send, watermarks, drafts
+  background.ts        MV3 service worker: OAuth, Gmail send, watermarks,
+                       recipient settings, Gmail compose fallback
   content.ts           LinkedIn content script (thread detection + sync UI)
   zoho.content.ts      Zoho CRM content script (rocket redirect button)
   popup/               Extension popup: connect/disconnect Google, sync history
 src/
   content/             DOM logic for the LinkedIn and Zoho content scripts
-  background/          Chrome-side logic (watermark storage)
-  shared/              Pure, unit-tested logic: composer, scopes, fingerprint,
-                       watermark, zoho-url, messages, errors, scope-filter
+  background/          Chrome-side logic (watermark and recipient storage)
+  shared/              Pure, unit-tested logic: composer, scopes, scope-filter,
+                       fingerprint, watermark, zoho-url, messages, errors,
+                       email, gmail-errors, recipient
 scripts/
-  validate-manifest.mjs  Post-build manifest sanity checks (see CI-ish gate below)
+  validate-manifest.mjs  Post-build manifest sanity checks (run by the release
+                         workflow; see Testing)
   extension-id.mjs       Prints the Chrome extension ID implied by manifest.key
 public/icon/           Rocket extension icons (16/32/48/96/128)
 assets/rocket-icon.svg Source of the rocket icon
+docs/manual-qa.md      Browser QA checklist for LinkedIn, Zoho, and the popup
+PRIVACY.md             Data inventory and retention
+SECURITY.md            Vulnerability reporting and trust model
+CONTRIBUTING.md        Setup, architecture, tests, and PR expectations
 ```
 
 The split is intentional: everything in `src/shared` is framework-free and
@@ -179,7 +211,7 @@ that need the DOM or `chrome.*` APIs.
 Requirements: **Node.js ≥ 22** and npm.
 
 ```bash
-npm install
+npm ci
 npm run dev          # watch mode — loads the unpacked extension in Chrome
 ```
 
@@ -235,7 +267,7 @@ Brave, Opera).
 ```bash
 git clone https://github.com/lucas-vidmar/jarvis-linkedin-chrome-extension.git
 cd jarvis-linkedin-chrome-extension
-npm install
+npm ci
 npm run build
 ```
 
@@ -251,9 +283,9 @@ unpacked**, and select the `.output/chrome-mv3` folder.
    [Symptoms of an ID/OAuth mismatch](#symptoms-of-an-idoauth-mismatch).
 2. (Optional) Set a **Sync recipient** in the popup if syncs shouldn't go to
    `jarvis@agileengine.com`.
-3. Open a LinkedIn conversation and look for **Sync to Jarvis** above the
-   message box. Open a Zoho contact and look for the **🚀** button next to
-   "Send Email".
+3. Open a LinkedIn conversation and look for the **Sync** button in the
+   conversation title bar. Open a Zoho contact and look for the **🚀** button
+   next to "Send Email".
 
 ### Updating
 
@@ -267,8 +299,12 @@ There's no auto-update for unpacked extensions. To update:
 ### Notes for distribution
 
 - Because the extension isn't in the Web Store, Chrome shows a
-  "developer mode extensions" warning on startup. It's harmless — just dismiss
-  it.
+  "developer mode extensions" warning on startup. It's expected for unpacked
+  installs — dismiss it, but only after confirming you trust the build (see
+  [SECURITY.md](SECURITY.md)).
+- There is no Web Store review and no auto-update. Install only from a trusted
+  release or source build, and review the trust model in
+  [SECURITY.md](SECURITY.md).
 - `chrome.identity` OAuth is tied to the extension ID, which is now **pinned**
   (see [Extension ID & Google OAuth](#extension-id--google-oauth)). Unpacked
   installs used to get a different ID on every machine — derived from the
@@ -325,8 +361,9 @@ generic `Bad Request`). Check, in order:
 - The Gmail API is enabled and `gmail.send` is on the consent screen.
 - The Google account is a test user if the app isn't published.
 
-As a fallback, the extension opens a pre-filled Gmail draft so a sync can still
-be completed manually, but connecting Google requires a correct client/ID pair.
+As a fallback, the extension opens a prefilled Gmail compose window in a new tab
+(not a saved draft) so a sync can still be completed manually, but connecting
+Google requires a correct client/ID pair.
 
 ### Rotating the key (changes the extension ID)
 
@@ -388,12 +425,19 @@ The popup setting always wins over the build-time value at runtime.
 ## Testing
 
 - **Pure logic** (`src/shared/*.test.ts`) — composer, scopes, scope filter,
-  fingerprint, watermark, and the Zoho URL mapper.
+  fingerprint, watermark, email encoding, Gmail error classification, and the
+  Zoho URL mapper.
 - **DOM behavior** (`src/content/*.test.ts`) — the Zoho button logic runs under
   a DOM implementation (happy-dom) with real computed-style assertions.
 - The LinkedIn content script is written to be stable against selector drift;
   both content scripts were validated live (real LinkedIn/Zoho pages) during
   development.
+
+Automated checks run in the tag-triggered release workflow
+([`.github/workflows/release.yml`](.github/workflows/release.yml)) on `v*` tags
+and manual dispatch: `npm ci`, `npm test`, `npm run typecheck`, `npm run zip`,
+and `npm run validate:manifest`. There is no pull-request CI workflow yet. The
+repeatable browser checklist is in [docs/manual-qa.md](docs/manual-qa.md).
 
 `npm run validate:manifest` asserts the things Chrome is picky about that are
 easy to break in a build: the full `gmail.send` scope URI, the `identity` and
@@ -402,15 +446,28 @@ easy to break in a build: the full `gmail.send` scope URI, the `identity` and
 
 ## Permissions & privacy
 
-| Permission | Why |
+| Permission / scope | Why |
 | --- | --- |
 | `identity` | Google sign-in through `chrome.identity.getAuthToken()`, scoped to `gmail.send`. |
 | `identity.email` | Reads the signed-in Chrome profile's email address so the popup can show **Authorized as …**. Without it Chrome returns an empty email even when the account is connected. |
 | `storage` | Persists the sync recipient and the per-conversation watermarks. |
+| `gmail.send` (OAuth scope) | Sends the composed sync email through the Gmail API. No inbox read/list scope is requested. |
+
+Host access is limited to `https://www.linkedin.com/*`, the supported Zoho CRM
+hosts, and Google's Gmail/OAuth endpoints. The extension does **not** request
+`<all_urls>` or access to arbitrary sites.
 
 Gmail access is limited to `gmail.send`: the extension can send the sync email
 from your account but it **cannot read your inbox** — no read/list scope is
 requested, and no message content is ever fetched back.
+
+See [PRIVACY.md](PRIVACY.md) for the full data inventory and retention rules. In
+short: the extension reads only the LinkedIn conversation you sync (plus the
+profile URL needed to identify the contact), the Zoho contact-record URL, and
+the signed-in Google profile email for display; it sends the composed sync email
+to the configured Jarvis recipient; it stores only watermarks and the recipient;
+and it contains no analytics, tracking, or telemetry. Tokens stay in Chrome's
+identity cache, not in extension storage or this repository.
 
 `chrome.identity.getProfileUserInfo()` can still return an empty email — for
 example when the Chrome profile has no Google account signed in, or the address
@@ -430,6 +487,18 @@ popup still reports the connection state and syncing works normally.
   can label the authorized Google account; Gmail access is limited to
   `gmail.send`, so the extension reads nothing from your inbox and can't read
   messages back.
+- Because this is an unpacked extension with no Web Store review or auto-update,
+  install only from a trusted release or source build. See
+  [SECURITY.md](SECURITY.md) for the trust model and reporting process.
+
+### Known copy inconsistency
+
+The LinkedIn success notice in `entrypoints/content.ts` still says **"Synced to
+Zoho."** (and **"Synced to Zoho. Sync point unchanged for this scope."**), and
+the popup headline says "Sync LinkedIn conversations to Zoho via Jarvis." The
+actual destination is the configured **Jarvis** sync recipient, not Zoho. This
+is a UI copy inconsistency; the documentation pass does not edit source. Treat
+"Zoho" in those messages as legacy wording.
 
 ## License
 
