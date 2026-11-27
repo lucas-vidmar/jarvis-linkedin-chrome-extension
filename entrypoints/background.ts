@@ -12,6 +12,8 @@ import {
   saveRecipient,
 } from '@/background/recipient';
 import { StorageError, STORAGE_FAILED } from '@/shared/errors';
+import { classifyGmailSendError } from '@/shared/gmail-errors';
+import { buildRawMessage } from '@/shared/email';
 
 const GMAIL_SEND_URL = 'https://gmail.googleapis.com/gmail/v1/users/me/messages/send';
 const GMAIL_SEND_TIMEOUT_MS = 30_000;
@@ -47,76 +49,6 @@ function storageFailureReply(error: unknown, fallbackMessage: string) {
     message: error instanceof StorageError ? error.message : fallbackMessage,
     retryable: true,
   };
-}
-
-function toBase64Url(bytes: Uint8Array): string {
-  let binary = '';
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte);
-  }
-  return btoa(binary)
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
-}
-
-function sanitizeHeaderValue(value: string): string {
-  return value.replace(/[\r\n]+/g, ' ').trim();
-}
-
-function encodeHeaderValue(value: string): string {
-  const ascii = /^[\x00-\x7F]*$/.test(value);
-  if (ascii) return value;
-  const encoded = toBase64Url(new TextEncoder().encode(value));
-  return `=?UTF-8?B?${encoded}?=`;
-}
-
-function buildRawMessage(envelope: { to: string; subject: string; body: string }): string {
-  const headers = [
-    `To: ${sanitizeHeaderValue(envelope.to)}`,
-    `Subject: ${encodeHeaderValue(sanitizeHeaderValue(envelope.subject))}`,
-    `Date: ${new Date().toUTCString()}`,
-    'MIME-Version: 1.0',
-    'Content-Type: text/plain; charset=UTF-8',
-  ].join('\r\n');
-  const raw = `${headers}\r\n\r\n${envelope.body.replace(/\r?\n/g, '\r\n')}`;
-  return toBase64Url(new TextEncoder().encode(raw));
-}
-
-async function classifySendError(
-  status: number,
-  body: string,
-): Promise<{ code: string; message: string; retryable: boolean }> {
-  let gmailReason = '';
-  let gmailStatus = '';
-  try {
-    const parsed = JSON.parse(body) as {
-      error?: { code?: number; message?: string; status?: string };
-    };
-    gmailReason = parsed.error?.message ?? '';
-    gmailStatus = parsed.error?.status ?? '';
-  } catch {
-    // Non-JSON error body; fall through to status-based classification.
-  }
-
-  console.log('[jarvis-sync] gmail send error:', status, gmailStatus, gmailReason);
-
-  if (status === 401 || status === 403) {
-    return {
-      code: 'AUTH_FAILED',
-      message: gmailReason
-        ? `Gmail rejected the send: ${gmailReason}`
-        : 'Google could not authorize the send. Reconnect to sync.',
-      retryable: true,
-    };
-  }
-  if (status === 408 || status === 409 || status === 412 || status === 413 || status === 429) {
-    return { code: 'SEND_FAILED', message: 'Gmail could not send the message. Try again shortly.', retryable: true };
-  }
-  if (status >= 500) {
-    return { code: 'SEND_FAILED', message: 'Gmail could not send the message.', retryable: true };
-  }
-  return { code: 'SEND_FAILED', message: 'The message could not be sent.', retryable: false };
 }
 
 async function sendSyncEmail(
@@ -186,10 +118,12 @@ async function sendSyncEmail(
 
       if (!response.ok) {
         const errorBody = await response.text();
-        if (response.status === 401 || response.status === 403) {
+        const classification = classifyGmailSendError(response.status, errorBody);
+        console.log('[jarvis-sync] gmail send error:', response.status, classification.code);
+        if (classification.code === 'AUTH_FAILED') {
           await chrome.identity.removeCachedAuthToken({ token }).catch(() => undefined);
         }
-        return syncErrorReply(requestId, await classifySendError(response.status, errorBody));
+        return syncErrorReply(requestId, classification);
       }
 
       const data = (await response.json()) as { id?: string };
