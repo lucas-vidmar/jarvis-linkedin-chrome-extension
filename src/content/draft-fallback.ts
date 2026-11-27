@@ -15,6 +15,7 @@ interface ConfirmDraftSentArgs {
   contactUrl: string;
   syncId: string;
   lastMessageFingerprint: string | null;
+  lastMessageTimestampMs: number | null;
   composedAtEpochMs: number;
   scope: ScopeId;
 }
@@ -68,6 +69,7 @@ export async function confirmDraftSent(args: ConfirmDraftSentArgs): Promise<Conf
       contactUrl: args.contactUrl,
       syncId: args.syncId,
       lastMessageFingerprint: args.lastMessageFingerprint,
+      lastMessageTimestampMs: args.lastMessageTimestampMs,
       composedAtEpochMs: args.composedAtEpochMs,
       scope: args.scope,
     })) as typeof reply;

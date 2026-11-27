@@ -88,6 +88,7 @@ function runDraftFallback(threadUrl: string, envelope: JarvisEnvelope, scope: Sc
               contactUrl: threadUrl,
               syncId: crypto.randomUUID(),
               lastMessageFingerprint: envelope.lastMessageFingerprint,
+              lastMessageTimestampMs: envelope.lastMessageTimestampMs,
               composedAtEpochMs: envelope.composedAtEpochMs,
               scope,
             })
@@ -185,6 +186,7 @@ function openDropdownForButton(
         const messages = await extraction;
         return filterMessagesByScope(messages, scope, new Date(), {
           watermarkFingerprint: watermark?.fingerprint ?? null,
+          watermarkTimestampMs: watermark?.lastMessageTimestampMs ?? null,
         }).length;
       };
       openScopeDropdown({
@@ -214,6 +216,7 @@ function openDropdownForButton(
           const freshWatermark = await readWatermark(contact.contactUrl);
           const messages = filterMessagesByScope(extracted, scope, new Date(), {
             watermarkFingerprint: freshWatermark?.fingerprint ?? null,
+            watermarkTimestampMs: freshWatermark?.lastMessageTimestampMs ?? null,
           });
           return composeAndSend(contact, scope, messages);
         },

@@ -3,6 +3,15 @@ import type { ScopeId } from '@/shared/scopes';
 export interface WatermarkValue {
   fingerprint: string;
   syncedAtEpochMs: number;
+  /**
+   * Timestamp of the newest message included in the last sync (composed
+   * order). Optional because entries written by older versions of the
+   * extension do not have it.
+   *
+   * `syncedAtEpochMs` is the compose time, not the last message time, so it
+   * cannot be used as a boundary fallback.
+   */
+  lastMessageTimestampMs?: number;
 }
 
 /**

@@ -81,11 +81,17 @@ export async function advanceWatermarkForScope(
   contactUrl: string,
   fingerprint: string | null | undefined,
   composedAtEpochMs: number,
+  lastMessageTimestampMs?: number | null,
 ): Promise<boolean> {
   if (!shouldAdvanceWatermark(scope)) {
     return false;
   }
-  await advanceWatermark(contactUrl, fingerprint, composedAtEpochMs);
+  await advanceWatermark(
+    contactUrl,
+    fingerprint,
+    composedAtEpochMs,
+    lastMessageTimestampMs,
+  );
   return true;
 }
 
@@ -93,6 +99,7 @@ export async function advanceWatermark(
   contactUrl: string,
   fingerprint: string | null | undefined,
   composedAtEpochMs: number,
+  lastMessageTimestampMs?: number | null,
 ): Promise<void> {
   if (
     !isValidFingerprint(fingerprint) ||
@@ -116,12 +123,21 @@ export async function advanceWatermark(
         ) {
           return;
         }
-        await chrome.storage.local.set({
-          [key]: {
-            fingerprint,
-            syncedAtEpochMs: composedAtEpochMs,
-          } satisfies WatermarkValue,
-        });
+        const value: WatermarkValue = {
+          fingerprint,
+          syncedAtEpochMs: composedAtEpochMs,
+        };
+        // Only persist a usable boundary timestamp. Old entries simply omit
+        // the field, and a null last-message timestamp means the extractor
+        // could not read one, so recording nothing is more honest than
+        // recording a bad boundary.
+        if (
+          typeof lastMessageTimestampMs === 'number' &&
+          Number.isFinite(lastMessageTimestampMs)
+        ) {
+          value.lastMessageTimestampMs = lastMessageTimestampMs;
+        }
+        await chrome.storage.local.set({ [key]: value });
       } catch (error) {
         console.warn('[jarvis-sync] watermark advance failed:', error);
       }

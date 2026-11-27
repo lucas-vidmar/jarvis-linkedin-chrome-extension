@@ -37,5 +37,12 @@ export async function readWatermark(contactUrl: string): Promise<WatermarkValue 
   ) {
     return null;
   }
+  if (
+    watermark.lastMessageTimestampMs !== undefined &&
+    (typeof watermark.lastMessageTimestampMs !== 'number' ||
+      !Number.isFinite(watermark.lastMessageTimestampMs))
+  ) {
+    return null;
+  }
   return watermark;
 }

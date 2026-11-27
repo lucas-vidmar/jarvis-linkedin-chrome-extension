@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { advanceWatermarkForScope } from '@/background/watermark';
+import { advanceWatermarkForScope, readWatermark } from '@/background/watermark';
 import type { ScopeId } from '@/shared/scopes';
 import { watermarkStorageKey, type WatermarkValue } from '@/shared/watermark';
 
@@ -8,6 +8,7 @@ const STORAGE_KEY = watermarkStorageKey(CONTACT_URL);
 const NEW_FINGERPRINT = 'a'.repeat(64);
 const OLD_FINGERPRINT = 'b'.repeat(64);
 const COMPOSED_AT_EPOCH_MS = Date.UTC(2026, 0, 2, 12, 0, 0);
+const LAST_MESSAGE_TIMESTAMP_MS = Date.UTC(2026, 0, 2, 11, 30, 0);
 
 const store = new Map<string, unknown>();
 
@@ -106,5 +107,42 @@ describe('advanceWatermarkForScope', () => {
 
     expect(advanced).toBe(true);
     expect(store.get(STORAGE_KEY)).toEqual(previous);
+  });
+
+  it('stores the last included message timestamp with the watermark', async () => {
+    await advanceWatermarkForScope(
+      'since-last-sync',
+      CONTACT_URL,
+      NEW_FINGERPRINT,
+      COMPOSED_AT_EPOCH_MS,
+      LAST_MESSAGE_TIMESTAMP_MS,
+    );
+
+    expect(store.get(STORAGE_KEY)).toEqual({
+      fingerprint: NEW_FINGERPRINT,
+      syncedAtEpochMs: COMPOSED_AT_EPOCH_MS,
+      lastMessageTimestampMs: LAST_MESSAGE_TIMESTAMP_MS,
+    });
+  });
+
+  it('omits the timestamp when the last message has none', async () => {
+    await advanceWatermarkForScope(
+      'since-last-sync',
+      CONTACT_URL,
+      NEW_FINGERPRINT,
+      COMPOSED_AT_EPOCH_MS,
+      null,
+    );
+
+    expect(store.get(STORAGE_KEY)).toEqual({
+      fingerprint: NEW_FINGERPRINT,
+      syncedAtEpochMs: COMPOSED_AT_EPOCH_MS,
+    });
+  });
+
+  it('still loads an older watermark that has no timestamp', async () => {
+    const previous = seedOldWatermark();
+
+    await expect(readWatermark(CONTACT_URL)).resolves.toEqual(previous);
   });
 });

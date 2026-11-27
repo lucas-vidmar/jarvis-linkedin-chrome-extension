@@ -50,6 +50,44 @@ describe('composeJarvisEnvelope', () => {
     expect(envelope.composedAtEpochMs).toBe(base.syncedAt.getTime());
   });
 
+  it('reports the timestamp of the last message in composed order', () => {
+    const earlier = message({ timestampMs: 1_700_000_000_000 });
+    const later = message({ timestampMs: 1_700_000_100_000 });
+    const envelope = composeJarvisEnvelope({
+      ...base,
+      messages: [later, earlier],
+    });
+    expect(envelope.lastMessageTimestampMs).toBe(1_700_000_100_000);
+  });
+
+  it('reports the last included timestamp when the body is truncated', () => {
+    const many = Array.from({ length: 200 }, (_, i) =>
+      message({
+        timestampMs: 1_700_000_000_000 + i * 1_000,
+        text: `message number ${i} with enough padding to push the body over the limit`,
+      }),
+    );
+    const envelope = composeJarvisEnvelope({ ...base, messages: many });
+    expect(envelope.truncated).toBe(true);
+    const included = Number(
+      envelope.body.match(/message number (\d+)/g)?.at(-1)?.replace(/\D/g, ''),
+    );
+    expect(envelope.lastMessageTimestampMs).toBe(1_700_000_000_000 + included * 1_000);
+  });
+
+  it('reports null timestamp when no message is included', () => {
+    const envelope = composeJarvisEnvelope({ ...base, messages: [] });
+    expect(envelope.lastMessageTimestampMs).toBeNull();
+  });
+
+  it('reports null timestamp when the last included message has no timestamp', () => {
+    const envelope = composeJarvisEnvelope({
+      ...base,
+      messages: [message({ timestampMs: 1_700_000_000_000 }), message({ timestampMs: null })],
+    });
+    expect(envelope.lastMessageTimestampMs).toBeNull();
+  });
+
   it('reports null fingerprint when no message is included', () => {
     const envelope = composeJarvisEnvelope({ ...base, messages: [] });
     expect(envelope.lastMessageFingerprint).toBeNull();

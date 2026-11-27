@@ -29,6 +29,7 @@ export interface JarvisEnvelope {
   truncated: boolean;
   omittedCount: number;
   lastMessageFingerprint: string | null;
+  lastMessageTimestampMs: number | null;
   composedAtEpochMs: number;
 }
 
@@ -149,6 +150,7 @@ export function composeJarvisEnvelope(input: ComposerInput): JarvisEnvelope {
     truncated,
     omittedCount,
     lastMessageFingerprint: lastIncluded?.fingerprint ?? null,
+    lastMessageTimestampMs: lastIncluded?.timestampMs ?? null,
     composedAtEpochMs: input.syncedAt.getTime(),
   };
 }

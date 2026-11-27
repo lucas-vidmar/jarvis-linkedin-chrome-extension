@@ -193,6 +193,7 @@ async function sendSyncEmail(
         contactUrl,
         envelope.lastMessageFingerprint,
         envelope.composedAtEpochMs,
+        envelope.lastMessageTimestampMs,
       );
 
       return {
@@ -562,12 +563,18 @@ export default defineBackground(() => {
           message.lastMessageFingerprint === null ||
           (typeof message.lastMessageFingerprint === 'string' &&
             /^[0-9a-f]{64}$/.test(message.lastMessageFingerprint));
+        const lastMessageTimestampMs = message.lastMessageTimestampMs ?? null;
+        const hasValidLastMessageTimestamp =
+          lastMessageTimestampMs === null ||
+          (typeof lastMessageTimestampMs === 'number' &&
+            Number.isFinite(lastMessageTimestampMs));
         if (
           typeof message.contactUrl !== 'string' ||
           typeof message.syncId !== 'string' ||
           typeof message.composedAtEpochMs !== 'number' ||
           !Number.isFinite(message.composedAtEpochMs) ||
-          !hasValidFingerprint
+          !hasValidFingerprint ||
+          !hasValidLastMessageTimestamp
         ) {
           safeReply({
             type: 'CONFIRM_DRAFT_SENT',
@@ -595,6 +602,7 @@ export default defineBackground(() => {
           message.contactUrl,
           message.lastMessageFingerprint,
           message.composedAtEpochMs,
+          lastMessageTimestampMs,
         ).then(replyConfirmed, replyConfirmed);
         return true;
       }

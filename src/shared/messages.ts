@@ -52,6 +52,7 @@ export interface ConfirmDraftSentRequest extends BaseRequest {
   contactUrl: string;
   syncId: string;
   lastMessageFingerprint: string | null;
+  lastMessageTimestampMs: number | null;
   composedAtEpochMs: number;
   /** Scope the draft was composed for; decides whether the watermark advances. */
   scope: ScopeId;

@@ -72,6 +72,78 @@ describe('filterMessagesByScope — since-last-sync', () => {
     expect(result).toEqual(ordered);
   });
 
+  it('TIMESTAMP_FALLBACK: uses the watermark timestamp when the boundary is absent', () => {
+    const old = message({ fingerprint: null, timestampMs: 1_000 });
+    const boundary = message({ fingerprint: null, timestampMs: 2_000 });
+    const newer = message({ fingerprint: null, timestampMs: 3_000 });
+    const result = filterMessagesByScope(
+      [old, boundary, newer],
+      'since-last-sync',
+      now,
+      {
+        watermarkFingerprint: 'z'.repeat(64),
+        watermarkTimestampMs: 2_000,
+      },
+    );
+    expect(result).toEqual([newer]);
+  });
+
+  it('TIMESTAMP_FALLBACK: excludes messages older than the watermark when the boundary is absent', () => {
+    const older = message({ fingerprint: null, timestampMs: 1_000 });
+    const newer = message({ fingerprint: null, timestampMs: 5_000 });
+    const result = filterMessagesByScope([older, newer], 'since-last-sync', now, {
+      watermarkFingerprint: 'z'.repeat(64),
+      watermarkTimestampMs: 3_000,
+    });
+    expect(result).toEqual([newer]);
+  });
+
+  it('TIMESTAMP_FALLBACK: keeps null-timestamp messages conservatively', () => {
+    const older = message({ fingerprint: null, timestampMs: 1_000 });
+    const unknown = message({ fingerprint: null, timestampMs: null });
+    const newer = message({ fingerprint: null, timestampMs: 5_000 });
+    const result = filterMessagesByScope(
+      [older, unknown, newer],
+      'since-last-sync',
+      now,
+      {
+        watermarkFingerprint: 'z'.repeat(64),
+        watermarkTimestampMs: 3_000,
+      },
+    );
+    expect(result).toEqual([unknown, newer]);
+  });
+
+  it('TIMESTAMP_FALLBACK: applies when no fingerprint is supplied but a timestamp is', () => {
+    const older = message({ fingerprint: null, timestampMs: 1_000 });
+    const newer = message({ fingerprint: null, timestampMs: 5_000 });
+    const result = filterMessagesByScope([older, newer], 'since-last-sync', now, {
+      watermarkTimestampMs: 3_000,
+    });
+    expect(result).toEqual([newer]);
+  });
+
+  it('BOUNDARY_PRESENT: ignores the fallback timestamp when the boundary is found', () => {
+    const a1 = message({ fingerprint: 'a'.repeat(64), timestampMs: 1_000 });
+    const b1 = message({ fingerprint: 'b'.repeat(64), timestampMs: 2_000 });
+    const c1 = message({ fingerprint: 'c'.repeat(64), timestampMs: 3_000 });
+    const result = filterMessagesByScope([a1, b1, c1], 'since-last-sync', now, {
+      watermarkFingerprint: 'b'.repeat(64),
+      // Deliberately newer than every message: the fingerprint path must win.
+      watermarkTimestampMs: 9_000,
+    });
+    expect(result).toEqual([c1]);
+  });
+
+  it('NO_WATERMARK_OR_TIMESTAMP: still returns all messages', () => {
+    expect(
+      filterMessagesByScope(ordered, 'since-last-sync', now, {
+        watermarkFingerprint: null,
+        watermarkTimestampMs: null,
+      }),
+    ).toEqual(ordered);
+  });
+
   it('uses the last matching occurrence as the boundary (duplicate-safe)', () => {
     const dup = message({ fingerprint: 'b'.repeat(64) });
     const result = filterMessagesByScope([a, b, dup, c], 'since-last-sync', now, {
