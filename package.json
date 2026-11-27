@@ -18,7 +18,7 @@
     "extension:id": "node scripts/extension-id.mjs"
   },
   "devDependencies": {
-    "@types/chrome": "0.2.5",
+    "@types/chrome": "0.3.8",
     "@vitest/coverage-v8": "^4.1.10",
     "happy-dom": "^20.11.2",
     "typescript": "5.9.3",
