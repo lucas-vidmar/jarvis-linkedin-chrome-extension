@@ -19,7 +19,7 @@
   },
   "devDependencies": {
     "@types/chrome": "0.2.5",
-    "@vitest/coverage-v8": "^4.1.10",
+    "@vitest/coverage-v8": "^5.1.1",
     "happy-dom": "^20.11.2",
     "typescript": "5.9.3",
     "vitest": "^4.1.10",
