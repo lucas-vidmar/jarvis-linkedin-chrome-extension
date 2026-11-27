@@ -11,6 +11,9 @@ node_modules/
 .output/
 .wxt/
 
+# Test coverage output
+coverage/
+
 # Env & local files
 .env*
 !.env.example
