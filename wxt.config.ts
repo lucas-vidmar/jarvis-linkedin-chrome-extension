@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { parseEnv } from 'node:util';
 import { defineConfig } from 'wxt';
+import { ZOHO_CRM_ORIGIN_PATTERNS } from './src/shared/zoho-url';
 
 /**
  * WXT loads `.env` files for the bundler (`import.meta.env`) but not into
@@ -75,7 +76,7 @@ export default defineConfig({
     },
     host_permissions: [
       'https://www.linkedin.com/*',
-      'https://crm.zoho.com/*',
+      ...ZOHO_CRM_ORIGIN_PATTERNS,
       'https://gmail.googleapis.com/*',
       'https://www.googleapis.com/*',
       'https://oauth2.googleapis.com/*',

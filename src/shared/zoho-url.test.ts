@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { zohoContactUrlToJarvis } from '@/shared/zoho-url';
+import { ZOHO_CRM_HOSTS, zohoContactUrlToJarvis } from '@/shared/zoho-url';
 
 const CONTACT_ID = '998335000461306666';
 const JARVIS_URL = `https://jarvis.agileengine.com/contacts/${CONTACT_ID}`;
@@ -65,13 +65,26 @@ describe('zohoContactUrlToJarvis', () => {
     expect(zohoContactUrlToJarvis('https://mail.zoho.com/crm/org31013314/tab/Contacts/123')).toBeNull();
   });
 
-  it('accepts any crm.zoho.* regional host', () => {
+  it.each([...ZOHO_CRM_HOSTS])('accepts the supported Zoho host %s', (host) => {
     expect(
-      zohoContactUrlToJarvis(`https://crm.zoho.eu/crm/org31013314/tab/Contacts/${CONTACT_ID}`),
+      zohoContactUrlToJarvis(`https://${host}/crm/org31013314/tab/Contacts/${CONTACT_ID}`),
     ).toBe(JARVIS_URL);
+  });
+
+  it.each([
+    'crm.zoho.evil.com',
+    'crm.zoho.com.evil.com',
+    'evil.crm.zoho.com',
+    'crm.zoho.co',
+    'crm.zoho.ca',
+    'crm.zoho.uk',
+    'crm.zohocloud.com',
+    'mail.zoho.com',
+    'www.zoho.com',
+  ])('rejects the unsupported host %s', (host) => {
     expect(
-      zohoContactUrlToJarvis(`https://crm.zoho.in/crm/org31013314/tab/Contacts/${CONTACT_ID}`),
-    ).toBe(JARVIS_URL);
+      zohoContactUrlToJarvis(`https://${host}/crm/org31013314/tab/Contacts/${CONTACT_ID}`),
+    ).toBeNull();
   });
 
   it('returns null for non-https Zoho URLs', () => {

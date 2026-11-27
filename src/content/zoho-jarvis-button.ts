@@ -44,20 +44,90 @@ a.jarvis-zoho-link:focus-visible {
   document.head.appendChild(style);
 }
 
+function matchesSendEmailLabel(element: Element): boolean {
+  const label = (
+    element.getAttribute('aria-label') ??
+    element.getAttribute('title') ??
+    element.textContent?.trim() ??
+    ''
+  ).trim();
+  return label.toLowerCase() === SEND_EMAIL_TEXT.toLowerCase();
+}
+
+function isHidden(element: Element): boolean {
+  if (element.hasAttribute('hidden')) return true;
+  if (element.getAttribute('aria-hidden') === 'true') return true;
+  let current: Element | null = element;
+  while (current) {
+    const style = getComputedStyle(current);
+    if (
+      style.display === 'none' ||
+      style.visibility === 'hidden' ||
+      style.visibility === 'collapse' ||
+      style.opacity === '0'
+    ) {
+      return true;
+    }
+    current = current.parentElement;
+  }
+  return false;
+}
+
+function classNameOf(element: Element): string {
+  return (element.getAttribute('class') ?? '').toLowerCase();
+}
+
+/** A Send Email control inside a dialog/compose modal is not the record action. */
+function isInsideModal(element: Element): boolean {
+  let current: Element | null = element.parentElement;
+  while (current) {
+    const role = (current.getAttribute('role') ?? '').toLowerCase();
+    const className = classNameOf(current);
+    const id = current.id.toLowerCase();
+    if (
+      current.tagName === 'DIALOG' ||
+      role === 'dialog' ||
+      role === 'alertdialog' ||
+      current.getAttribute('aria-modal') === 'true' ||
+      className.includes('modal') ||
+      className.includes('dialog') ||
+      id.includes('modal') ||
+      id.includes('dialog')
+    ) {
+      return true;
+    }
+    current = current.parentElement;
+  }
+  return false;
+}
+
+/** Prefer the record action bar over unrelated lookalike controls. */
+function isInsideActionArea(element: Element): boolean {
+  let current: Element | null = element.parentElement;
+  while (current) {
+    const role = (current.getAttribute('role') ?? '').toLowerCase();
+    const className = classNameOf(current);
+    if (role === 'toolbar' || className.includes('action') || className.includes('toolbar')) {
+      return true;
+    }
+    current = current.parentElement;
+  }
+  return false;
+}
+
 export function findSendEmailButton(
   root: ParentNode = document,
 ): HTMLAnchorElement | HTMLButtonElement | null {
   const candidates = root.querySelectorAll<HTMLAnchorElement | HTMLButtonElement>('a, button');
+  let fallback: HTMLAnchorElement | HTMLButtonElement | null = null;
   for (const candidate of candidates) {
-    const label = (
-      candidate.getAttribute('aria-label') ??
-      candidate.getAttribute('title') ??
-      candidate.textContent?.trim() ??
-      ''
-    ).trim();
-    if (label.toLowerCase() === SEND_EMAIL_TEXT.toLowerCase()) return candidate;
+    if (!matchesSendEmailLabel(candidate)) continue;
+    if (isHidden(candidate)) continue;
+    if (isInsideModal(candidate)) continue;
+    if (isInsideActionArea(candidate)) return candidate;
+    fallback ??= candidate;
   }
-  return null;
+  return fallback;
 }
 
 let clickGuardRegistered = false;

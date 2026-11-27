@@ -106,6 +106,43 @@ describe('syncZohoJarvisLink', () => {
     );
   });
 
+  it('ignores a hidden decoy and mounts next to the visible Send Email button', () => {
+    document.body.innerHTML = `
+      <div class="detail-action-bar">
+        <button aria-label="Send Email" style="display: none">Send Email</button>
+        <button aria-label="Send Email">Send Email</button>
+      </div>`;
+    syncZohoJarvisLink(JARVIS_URL);
+
+    const links = mountedLinks();
+    expect(links).toHaveLength(1);
+    const buttons = document.querySelectorAll('button');
+    expect(links[0].nextElementSibling).toBe(buttons[1]);
+  });
+
+  it('ignores a Send Email duplicate inside a modal in favour of the action bar', () => {
+    document.body.innerHTML = `
+      <div role="dialog" aria-modal="true" class="lyte-modal">
+        <button aria-label="Send Email">Send Email</button>
+      </div>
+      <div class="detail-action-bar">
+        <button aria-label="Send Email">Send Email</button>
+      </div>`;
+    syncZohoJarvisLink(JARVIS_URL);
+
+    const links = mountedLinks();
+    expect(links).toHaveLength(1);
+    const actionButton = document.querySelector('.detail-action-bar button');
+    expect(links[0].nextElementSibling).toBe(actionButton);
+  });
+
+  it('does not mount when the only Send Email control is hidden', () => {
+    document.body.innerHTML =
+      '<button aria-label="Send Email" style="visibility: hidden">Send Email</button>';
+    syncZohoJarvisLink(JARVIS_URL);
+    expect(mountedLinks()).toHaveLength(0);
+  });
+
   it('stops clicks from bubbling so Zoho does not open the email composer', () => {
     document.body.innerHTML =
       '<button class="lyte-button lytePrimaryBtn" aria-label="Send Email">Send Email</button>';

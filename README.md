@@ -73,6 +73,24 @@ rebuild needed), and review or reset sync history per conversation.
 2. Click the orange **🚀** button to the left of "Send Email".
 3. The matching contact opens in Jarvis in a new tab.
 
+The button is available on every Zoho CRM data-center domain:
+
+| Region | Host |
+| --- | --- |
+| United States | `crm.zoho.com` |
+| Europe | `crm.zoho.eu` |
+| India | `crm.zoho.in` |
+| Australia | `crm.zoho.com.au` |
+| Japan | `crm.zoho.jp` |
+| China | `crm.zoho.com.cn` |
+| Canada | `crm.zohocloud.ca` |
+| Saudi Arabia | `crm.zoho.sa` |
+| United Arab Emirates | `crm.zoho.ae` |
+| Singapore | `crm.zoho.sg` |
+
+Only these exact hosts are matched; lookalike domains such as
+`crm.zoho.evil.com` are rejected.
+
 ### Change where syncs are sent
 
 Open the extension popup → **Sync recipient** → type an email → **Save**.
@@ -127,9 +145,10 @@ the chosen scope, and the conversation messages.
   Zoho's re-renders. A capture-phase `stopImmediatePropagation` guard keeps
   Zoho's "Send Email" click handler from firing when you click the rocket —
   the new-tab navigation still works.
-- **URL mapping** (`src/shared/zoho-url.ts`) — pure function mapping a Zoho
-  contact record URL to its Jarvis equivalent, or `null` when the page isn't a
-  contact detail page.
+- **URL mapping** (`src/shared/zoho-url.ts`) — the canonical list of supported
+  Zoho data-center hosts plus a pure function mapping a Zoho contact record URL
+  to its Jarvis equivalent, or `null` when the page isn't a contact detail page.
+  The same list feeds the content-script `matches` and `host_permissions`.
 
 ## Repository layout
 
