@@ -14,11 +14,15 @@ import {
 import { StorageError, STORAGE_FAILED } from '@/shared/errors';
 import { classifyGmailSendError } from '@/shared/gmail-errors';
 import { buildRawMessage } from '@/shared/email';
+import {
+  isAllowedGmailComposeUrl,
+  validateSendSyncEmailRequest,
+} from '@/background/validation';
 
 const GMAIL_SEND_URL = 'https://gmail.googleapis.com/gmail/v1/users/me/messages/send';
 const GMAIL_SEND_TIMEOUT_MS = 30_000;
-const GMAIL_COMPOSE_URL_PREFIX = 'https://mail.google.com/mail/';
 const GMAIL_OAUTH_REVOKE_URL = 'https://oauth2.googleapis.com/revoke';
+const GMAIL_OAUTH_REVOKE_TIMEOUT_MS = 5_000;
 
 const inFlightByContact = new Set<string>();
 const inFlightSyncIds = new Set<string>();
@@ -55,6 +59,20 @@ async function sendSyncEmail(
   message: Extract<PopupRequest, { type: 'SEND_SYNC_EMAIL' }>,
 ): Promise<SyncEmailReply> {
   const { requestId, syncId, contactUrl, envelope, scope } = message;
+
+  // The content script is untrusted input: reject malformed requests before
+  // the Gmail call or the watermark write. Never echo envelope contents back.
+  const validation = validateSendSyncEmailRequest(message);
+  if (!validation.ok) {
+    if (import.meta.env.DEV) {
+      console.warn('[jarvis-sync] rejected SEND_SYNC_EMAIL:', validation.reason);
+    }
+    return syncErrorReply(requestId, {
+      code: 'SEND_FAILED',
+      message: 'This sync request was invalid. Reload the LinkedIn tab and try again.',
+      retryable: false,
+    });
+  }
 
   if (inFlightByContact.has(contactUrl)) {
     return syncErrorReply(requestId, {
@@ -119,7 +137,13 @@ async function sendSyncEmail(
       if (!response.ok) {
         const errorBody = await response.text();
         const classification = classifyGmailSendError(response.status, errorBody);
-        console.log('[jarvis-sync] gmail send error:', response.status, classification.code);
+        if (import.meta.env.DEV) {
+          console.log(
+            '[jarvis-sync] gmail send failed:',
+            response.status,
+            classification.code,
+          );
+        }
         if (classification.code === 'AUTH_FAILED') {
           await chrome.identity.removeCachedAuthToken({ token }).catch(() => undefined);
         }
@@ -203,9 +227,24 @@ async function disconnectGoogle(): Promise<boolean> {
 
   if (token) {
     await chrome.identity.removeCachedAuthToken({ token });
-    await fetch(`${GMAIL_OAUTH_REVOKE_URL}?token=${encodeURIComponent(token)}`, {
-      method: 'POST',
-    }).catch(() => undefined);
+    const controller = new AbortController();
+    const timeout = setTimeout(
+      () => controller.abort(),
+      GMAIL_OAUTH_REVOKE_TIMEOUT_MS,
+    );
+    try {
+      await fetch(GMAIL_OAUTH_REVOKE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ token }).toString(),
+        signal: controller.signal,
+      });
+    } catch {
+      // Best-effort revocation: the local token is already gone, and a slow or
+      // unreachable revoke endpoint must not fail the disconnect.
+    } finally {
+      clearTimeout(timeout);
+    }
   }
   return true;
 }
@@ -480,7 +519,7 @@ export default defineBackground(() => {
       }
 
       if (message?.type === 'OPEN_DRAFT_FALLBACK') {
-        if (typeof message.url !== 'string' || !message.url.startsWith(GMAIL_COMPOSE_URL_PREFIX)) {
+        if (!isAllowedGmailComposeUrl(message.url)) {
           safeReply({
             type: 'OPEN_DRAFT_FALLBACK',
             requestId: message.requestId,
@@ -549,7 +588,9 @@ export default defineBackground(() => {
           return false;
         }
         const replyConfirmed = (watermarkAdvanced: boolean): void => {
-          console.log('[jarvis-sync] draft confirmed sent:', message.contactUrl, message.syncId);
+          if (import.meta.env.DEV) {
+            console.log('[jarvis-sync] draft confirmed sent:', { watermarkAdvanced });
+          }
           safeReply({
             type: 'CONFIRM_DRAFT_SENT',
             requestId: message.requestId,
@@ -578,7 +619,12 @@ export default defineBackground(() => {
           lastMessageTimestampMs,
         ).then((advance) => {
           if (advance.status === 'failed') {
-            console.warn('[jarvis-sync] draft watermark advance failed:', advance.error.message);
+            if (import.meta.env.DEV) {
+              console.warn(
+                '[jarvis-sync] draft watermark advance failed:',
+                advance.error.message,
+              );
+            }
             replyStorageFailure();
             return;
           }
