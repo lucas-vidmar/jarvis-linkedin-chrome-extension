@@ -6,7 +6,12 @@ import {
   type SyncEmailReply,
 } from '@/shared/messages';
 import { advanceWatermarkForScope, listWatermarks, readWatermark, resetWatermark } from '@/background/watermark';
-import { readRecipient, saveRecipient } from '@/background/recipient';
+import {
+  InvalidRecipientError,
+  readRecipient,
+  saveRecipient,
+} from '@/background/recipient';
+import { StorageError, STORAGE_FAILED } from '@/shared/errors';
 
 const GMAIL_SEND_URL = 'https://gmail.googleapis.com/gmail/v1/users/me/messages/send';
 const GMAIL_SEND_TIMEOUT_MS = 30_000;
@@ -34,6 +39,14 @@ function syncErrorReply(
   error: { code: string; message: string; retryable: boolean },
 ): SyncEmailReply {
   return { type: 'SEND_SYNC_EMAIL', requestId, ok: false, error };
+}
+
+function storageFailureReply(error: unknown, fallbackMessage: string) {
+  return {
+    code: STORAGE_FAILED,
+    message: error instanceof StorageError ? error.message : fallbackMessage,
+    retryable: true,
+  };
 }
 
 function toBase64Url(bytes: Uint8Array): string {
@@ -188,7 +201,7 @@ async function sendSyncEmail(
         });
       }
 
-      await advanceWatermarkForScope(
+      const advance = await advanceWatermarkForScope(
         scope,
         contactUrl,
         envelope.lastMessageFingerprint,
@@ -196,11 +209,33 @@ async function sendSyncEmail(
         envelope.lastMessageTimestampMs,
       );
 
+      if (advance.status === 'failed') {
+        // Gmail already accepted the message. Report the send as successful
+        // but make it explicit that the sync point did not move.
+        return {
+          type: 'SEND_SYNC_EMAIL',
+          requestId,
+          ok: true,
+          data: {
+            messageId: data.id,
+            watermarkAdvanced: false,
+            watermarkError: {
+              code: STORAGE_FAILED,
+              message: advance.error.message,
+              retryable: true,
+            },
+          },
+        };
+      }
+
       return {
         type: 'SEND_SYNC_EMAIL',
         requestId,
         ok: true,
-        data: { messageId: data.id },
+        data: {
+          messageId: data.id,
+          watermarkAdvanced: advance.status === 'advanced',
+        },
       };
     } finally {
       inFlightSyncIds.delete(syncId);
@@ -279,12 +314,12 @@ export default defineBackground(() => {
               data: { watermark },
             });
           })
-          .catch(() => {
+          .catch((error: unknown) => {
             safeReply({
               type: 'READ_WATERMARK',
               requestId: message.requestId,
-              ok: true,
-              data: { watermark: null },
+              ok: false,
+              error: storageFailureReply(error, 'Could not read sync progress.'),
             });
           });
         return true;
@@ -300,16 +335,12 @@ export default defineBackground(() => {
               data: { watermarks },
             });
           })
-          .catch(() => {
+          .catch((error: unknown) => {
             safeReply({
               type: 'LIST_WATERMARKS',
               requestId: message.requestId,
               ok: false,
-              error: {
-                code: 'SEND_FAILED',
-                message: 'Could not load sync history.',
-                retryable: true,
-              },
+              error: storageFailureReply(error, 'Could not load sync history.'),
             });
           });
         return true;
@@ -338,16 +369,12 @@ export default defineBackground(() => {
               data: { reset: true },
             });
           })
-          .catch(() => {
+          .catch((error: unknown) => {
             safeReply({
               type: 'RESET_WATERMARK',
               requestId: message.requestId,
               ok: false,
-              error: {
-                code: 'SEND_FAILED',
-                message: 'Could not reset. Try again.',
-                retryable: true,
-              },
+              error: storageFailureReply(error, 'Could not reset. Try again.'),
             });
           });
         return true;
@@ -363,16 +390,12 @@ export default defineBackground(() => {
               data: state,
             });
           })
-          .catch(() => {
+          .catch((error: unknown) => {
             safeReply({
               type: 'GET_SYNC_RECIPIENT',
               requestId: message.requestId,
               ok: false,
-              error: {
-                code: 'SEND_FAILED',
-                message: 'Could not load the sync recipient.',
-                retryable: true,
-              },
+              error: storageFailureReply(error, 'Could not load the sync recipient.'),
             });
           });
         return true;
@@ -401,16 +424,19 @@ export default defineBackground(() => {
               data: { recipient },
             });
           })
-          .catch(() => {
+          .catch((error: unknown) => {
+            const invalid = error instanceof InvalidRecipientError;
             safeReply({
               type: 'SET_SYNC_RECIPIENT',
               requestId: message.requestId,
               ok: false,
-              error: {
-                code: 'SEND_FAILED',
-                message: 'That email address does not look valid. Try again.',
-                retryable: true,
-              },
+              error: invalid
+                ? {
+                    code: 'INVALID_RECIPIENT',
+                    message: 'That email address does not look valid. Try again.',
+                    retryable: true,
+                  }
+                : storageFailureReply(error, 'Could not save the sync recipient.'),
             });
           });
         return true;
@@ -588,13 +614,26 @@ export default defineBackground(() => {
           });
           return false;
         }
-        const replyConfirmed = (): void => {
+        const replyConfirmed = (watermarkAdvanced: boolean): void => {
           console.log('[jarvis-sync] draft confirmed sent:', message.contactUrl, message.syncId);
           safeReply({
             type: 'CONFIRM_DRAFT_SENT',
             requestId: message.requestId,
             ok: true,
-            data: { confirmed: true },
+            data: { confirmed: true, watermarkAdvanced },
+          });
+        };
+        const replyStorageFailure = (): void => {
+          safeReply({
+            type: 'CONFIRM_DRAFT_SENT',
+            requestId: message.requestId,
+            ok: false,
+            error: {
+              code: STORAGE_FAILED,
+              message:
+                'The draft was sent, but sync progress could not be saved. Reload the tab and try again.',
+              retryable: true,
+            },
           });
         };
         advanceWatermarkForScope(
@@ -603,7 +642,14 @@ export default defineBackground(() => {
           message.lastMessageFingerprint,
           message.composedAtEpochMs,
           lastMessageTimestampMs,
-        ).then(replyConfirmed, replyConfirmed);
+        ).then((advance) => {
+          if (advance.status === 'failed') {
+            console.warn('[jarvis-sync] draft watermark advance failed:', advance.error.message);
+            replyStorageFailure();
+            return;
+          }
+          replyConfirmed(advance.status === 'advanced');
+        }, replyStorageFailure);
         return true;
       }
 

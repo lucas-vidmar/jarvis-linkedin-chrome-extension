@@ -21,7 +21,6 @@ import {
   openScopeDropdown,
 } from '@/content/scope-dropdown';
 import { defaultScope, type ScopeId } from '@/shared/scopes';
-import { shouldAdvanceWatermark } from '@/shared/watermark';
 import { composeJarvisEnvelope } from '@/shared/composer';
 import { filterMessagesByScope } from '@/shared/scope-filter';
 import { setPendingScope, setPendingEnvelope } from '@/content/sync-state';
@@ -92,17 +91,20 @@ function runDraftFallback(threadUrl: string, envelope: JarvisEnvelope, scope: Sc
               composedAtEpochMs: envelope.composedAtEpochMs,
               scope,
             })
-              .then(() => {
+              .then((result) => {
                 if (!isCurrentThread(threadUrl)) return;
                 showSyncSuccess(
-                  shouldAdvanceWatermark(scope)
+                  result.watermarkAdvanced
                     ? 'Draft confirmed.'
                     : 'Draft confirmed. Sync point unchanged for this scope.',
                 );
               })
-              .catch(() => {
+              .catch((confirmError: { message?: string }) => {
                 if (!isCurrentThread(threadUrl)) return;
-                showSyncError('Could not confirm the draft. Try again.');
+                showSyncError(
+                  confirmError?.message?.trim() ||
+                    'Could not confirm the draft. Try again.',
+                );
               });
           },
         },
@@ -130,8 +132,16 @@ function attemptSend(threadUrl: string, envelope: JarvisEnvelope, scope: ScopeId
     .then((result) => {
       if (!isCurrentThread(threadUrl)) return;
       console.log('[jarvis-sync] sent:', result.messageId);
+      if (result.watermarkError) {
+        // Gmail accepted the message, but the sync point did not move. Do not
+        // claim otherwise: a retry will re-send these messages.
+        showSyncError(
+          'Sent, but sync progress could not be saved. Re-syncing may resend these messages.',
+        );
+        return;
+      }
       showSyncSuccess(
-        shouldAdvanceWatermark(scope)
+        result.watermarkAdvanced
           ? 'Synced to Zoho.'
           : 'Synced to Zoho. Sync point unchanged for this scope.',
       );
@@ -213,7 +223,13 @@ function openDropdownForButton(
             showSyncError('Could not read the conversation. Try again.');
             return;
           }
-          const freshWatermark = await readWatermark(contact.contactUrl);
+          let freshWatermark;
+          try {
+            freshWatermark = await readWatermark(contact.contactUrl);
+          } catch {
+            showSyncError('Could not read sync progress. Nothing was sent.');
+            return;
+          }
           const messages = filterMessagesByScope(extracted, scope, new Date(), {
             watermarkFingerprint: freshWatermark?.fingerprint ?? null,
             watermarkTimestampMs: freshWatermark?.lastMessageTimestampMs ?? null,
@@ -226,8 +242,11 @@ function openDropdownForButton(
       });
     })
     .catch(() => {
-      // The watermark read failed before the dropdown opened; do not show a
-      // dead button with no feedback, but avoid opening a stale dropdown.
+      // A failed watermark read is not a first sync. Keep the dropdown closed
+      // and tell the user instead of silently offering a full re-send.
+      if (isScopeDropdownOpen()) return;
+      if (!button.isConnected) return;
+      showSyncError('Could not read sync progress. Try again.');
     });
 }
 
@@ -257,9 +276,14 @@ function composeAndSend(
     setPendingEnvelope(envelope);
     return attemptSend(contact.contactUrl, envelope, scope);
   })
-    .catch((error: { message?: string }) => {
+    .catch((error: { code?: string; message?: string }) => {
       console.log('[jarvis-sync] send preparation failed:', error?.message ?? '');
-      showSyncError("Couldn't sync — try again.");
+      showSyncError(
+        error?.code === 'STORAGE_FAILED'
+          ? error.message?.trim() ||
+              "Couldn't sync — could not read the saved sync recipient."
+          : "Couldn't sync — try again.",
+      );
     });
 }
 

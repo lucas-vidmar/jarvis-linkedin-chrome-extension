@@ -1,6 +1,13 @@
-import { DEFAULT_SYNC_RECIPIENT } from '@/shared/recipient';
-import type { GetSyncRecipientResult } from '@/shared/messages';
+import type { AppError, GetSyncRecipientResult } from '@/shared/messages';
+import { storageAppError } from '@/shared/errors';
 
+/**
+ * Read the sync recipient from the background.
+ *
+ * Throws on a storage/transport failure. The default recipient is resolved in
+ * the background only when nothing is stored; there is no local fallback here
+ * because mailing to an unverified address is worse than aborting the send.
+ */
 export async function readSyncRecipient(): Promise<string> {
   const requestId = crypto.randomUUID();
 
@@ -9,6 +16,7 @@ export async function readSyncRecipient(): Promise<string> {
     requestId: string;
     ok: boolean;
     data?: GetSyncRecipientResult;
+    error?: AppError;
   };
   try {
     reply = (await chrome.runtime.sendMessage({
@@ -16,15 +24,18 @@ export async function readSyncRecipient(): Promise<string> {
       requestId,
     })) as typeof reply;
   } catch {
-    return DEFAULT_SYNC_RECIPIENT;
+    throw storageAppError('Could not read the saved sync recipient.');
   }
 
   if (!reply || reply.type !== 'GET_SYNC_RECIPIENT' || reply.requestId !== requestId) {
-    return DEFAULT_SYNC_RECIPIENT;
+    throw storageAppError('Unexpected reply while reading the sync recipient.');
   }
   if (!reply.ok) {
-    return DEFAULT_SYNC_RECIPIENT;
+    throw reply.error ?? storageAppError('Could not read the saved sync recipient.');
   }
   const value = reply.data?.recipient?.trim() ?? '';
-  return value !== '' ? value : DEFAULT_SYNC_RECIPIENT;
+  if (value === '') {
+    throw storageAppError('The saved sync recipient could not be read.');
+  }
+  return value;
 }

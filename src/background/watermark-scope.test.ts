@@ -49,14 +49,14 @@ describe('advanceWatermarkForScope', () => {
   it.each<ScopeId>(['entire-thread', 'since-last-sync'])(
     'advances the watermark for the %s scope',
     async (scope) => {
-      const advanced = await advanceWatermarkForScope(
+      const result = await advanceWatermarkForScope(
         scope,
         CONTACT_URL,
         NEW_FINGERPRINT,
         COMPOSED_AT_EPOCH_MS,
       );
 
-      expect(advanced).toBe(true);
+      expect(result).toEqual({ status: 'advanced' });
       expect(store.get(STORAGE_KEY)).toEqual({
         fingerprint: NEW_FINGERPRINT,
         syncedAtEpochMs: COMPOSED_AT_EPOCH_MS,
@@ -69,14 +69,14 @@ describe('advanceWatermarkForScope', () => {
     async (scope) => {
       const previous = seedOldWatermark();
 
-      const advanced = await advanceWatermarkForScope(
+      const result = await advanceWatermarkForScope(
         scope,
         CONTACT_URL,
         NEW_FINGERPRINT,
         COMPOSED_AT_EPOCH_MS,
       );
 
-      expect(advanced).toBe(false);
+      expect(result).toEqual({ status: 'skipped', reason: 'scope' });
       expect(store.get(STORAGE_KEY)).toEqual(previous);
     },
   );
@@ -84,28 +84,28 @@ describe('advanceWatermarkForScope', () => {
   it('leaves the watermark untouched when the scope is missing', async () => {
     const previous = seedOldWatermark();
 
-    const advanced = await advanceWatermarkForScope(
+    const result = await advanceWatermarkForScope(
       undefined,
       CONTACT_URL,
       NEW_FINGERPRINT,
       COMPOSED_AT_EPOCH_MS,
     );
 
-    expect(advanced).toBe(false);
+    expect(result).toEqual({ status: 'skipped', reason: 'scope' });
     expect(store.get(STORAGE_KEY)).toEqual(previous);
   });
 
   it('does not write an unusable fingerprint even for an advancing scope', async () => {
     const previous = seedOldWatermark();
 
-    const advanced = await advanceWatermarkForScope(
+    const result = await advanceWatermarkForScope(
       'entire-thread',
       CONTACT_URL,
       null,
       COMPOSED_AT_EPOCH_MS,
     );
 
-    expect(advanced).toBe(true);
+    expect(result).toEqual({ status: 'skipped', reason: 'invalid' });
     expect(store.get(STORAGE_KEY)).toEqual(previous);
   });
 

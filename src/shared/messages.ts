@@ -114,6 +114,16 @@ export interface DisconnectResult {
 
 export interface SendSyncEmailResult {
   messageId: string;
+  /**
+   * True only when the stored sync point actually moved. False when the scope
+   * intentionally keeps its watermark or when the write failed.
+   */
+  watermarkAdvanced: boolean;
+  /**
+   * Present when Gmail accepted the message but the new sync point could not
+   * be persisted. The caller must not claim that sync progress moved.
+   */
+  watermarkError?: AppError;
 }
 
 export interface OpenDraftFallbackResult {
@@ -122,6 +132,8 @@ export interface OpenDraftFallbackResult {
 
 export interface ConfirmDraftSentResult {
   confirmed: boolean;
+  /** True only when the stored sync point actually moved. */
+  watermarkAdvanced: boolean;
 }
 
 export interface ReadWatermarkResult {
