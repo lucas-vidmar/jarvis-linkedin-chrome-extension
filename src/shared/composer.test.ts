@@ -21,7 +21,7 @@ describe('composeJarvisEnvelope', () => {
     contactUrl: 'https://www.linkedin.com/in/ada',
     selfName: 'Lin',
     scope: 'entire-thread' as const,
-    syncedAt: new Date('2026-08-14T12:00:00Z'),
+    syncedAt: new Date(2026, 7, 14, 12, 0, 0),
   };
 
   it('starts the body with the contact URL then the sync header line', () => {
