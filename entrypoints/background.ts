@@ -5,7 +5,7 @@ import {
   type PopupRequest,
   type SyncEmailReply,
 } from '@/shared/messages';
-import { advanceWatermark, listWatermarks, readWatermark, resetWatermark } from '@/background/watermark';
+import { advanceWatermarkForScope, listWatermarks, readWatermark, resetWatermark } from '@/background/watermark';
 import { readRecipient, saveRecipient } from '@/background/recipient';
 
 const GMAIL_SEND_URL = 'https://gmail.googleapis.com/gmail/v1/users/me/messages/send';
@@ -109,7 +109,7 @@ async function classifySendError(
 async function sendSyncEmail(
   message: Extract<PopupRequest, { type: 'SEND_SYNC_EMAIL' }>,
 ): Promise<SyncEmailReply> {
-  const { requestId, syncId, contactUrl, envelope } = message;
+  const { requestId, syncId, contactUrl, envelope, scope } = message;
 
   if (inFlightByContact.has(contactUrl)) {
     return syncErrorReply(requestId, {
@@ -188,7 +188,12 @@ async function sendSyncEmail(
         });
       }
 
-      await advanceWatermark(contactUrl, envelope.lastMessageFingerprint, envelope.composedAtEpochMs);
+      await advanceWatermarkForScope(
+        scope,
+        contactUrl,
+        envelope.lastMessageFingerprint,
+        envelope.composedAtEpochMs,
+      );
 
       return {
         type: 'SEND_SYNC_EMAIL',
@@ -585,7 +590,8 @@ export default defineBackground(() => {
             data: { confirmed: true },
           });
         };
-        advanceWatermark(
+        advanceWatermarkForScope(
+          message.scope,
           message.contactUrl,
           message.lastMessageFingerprint,
           message.composedAtEpochMs,

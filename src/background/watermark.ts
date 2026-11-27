@@ -1,8 +1,10 @@
 import {
   isValidFingerprint,
+  shouldAdvanceWatermark,
   watermarkStorageKey,
   type WatermarkValue,
 } from '@/shared/watermark';
+import type { ScopeId } from '@/shared/scopes';
 import type { WatermarkEntry } from '@/shared/messages';
 
 const locksByContact = new Map<string, Promise<unknown>>();
@@ -66,6 +68,25 @@ export async function resetWatermark(contactUrl: string): Promise<void> {
       locksByContact.delete(contactUrl);
     }
   }
+}
+
+/**
+ * Advance the watermark only when the sync scope covers the current boundary.
+ *
+ * Returns true when the policy allowed an advance attempt (the fingerprint
+ * itself may still be unusable, in which case advanceWatermark no-ops).
+ */
+export async function advanceWatermarkForScope(
+  scope: ScopeId | null | undefined,
+  contactUrl: string,
+  fingerprint: string | null | undefined,
+  composedAtEpochMs: number,
+): Promise<boolean> {
+  if (!shouldAdvanceWatermark(scope)) {
+    return false;
+  }
+  await advanceWatermark(contactUrl, fingerprint, composedAtEpochMs);
+  return true;
 }
 
 export async function advanceWatermark(

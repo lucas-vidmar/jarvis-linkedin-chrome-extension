@@ -1,4 +1,5 @@
 import { composeComposeUrl, type JarvisEnvelope } from '@/shared/composer';
+import type { ScopeId } from '@/shared/scopes';
 import type {
   AppError,
   ConfirmDraftSentResult,
@@ -15,6 +16,7 @@ interface ConfirmDraftSentArgs {
   syncId: string;
   lastMessageFingerprint: string | null;
   composedAtEpochMs: number;
+  scope: ScopeId;
 }
 
 export async function openDraftFallback(args: OpenDraftFallbackArgs): Promise<OpenDraftFallbackResult> {
@@ -67,6 +69,7 @@ export async function confirmDraftSent(args: ConfirmDraftSentArgs): Promise<Conf
       syncId: args.syncId,
       lastMessageFingerprint: args.lastMessageFingerprint,
       composedAtEpochMs: args.composedAtEpochMs,
+      scope: args.scope,
     })) as typeof reply;
   } catch {
     throw {

@@ -1,6 +1,31 @@
+import type { ScopeId } from '@/shared/scopes';
+
 export interface WatermarkValue {
   fingerprint: string;
   syncedAtEpochMs: number;
+}
+
+/**
+ * Scopes whose message set always ends at the current conversation boundary,
+ * so the last synced message is a safe sync point.
+ */
+const ADVANCING_SCOPES: readonly ScopeId[] = ['entire-thread', 'since-last-sync'];
+
+/**
+ * Whether a successful send for this scope may advance the sync watermark.
+ *
+ * Only `entire-thread` and `since-last-sync` cover everything up to the newest
+ * message. `selected` can skip messages between picks (A B C D, pick B and D
+ * would skip C forever), and `last-day`/`last-week` stop at a time window, so
+ * older un-synced messages would be skipped if the watermark moved to the
+ * newest message in the window. Those scopes keep the previous watermark.
+ *
+ * A missing/unknown scope (for example a message from an older content script
+ * during an extension update) also keeps the watermark where it was: not
+ * advancing is recoverable, while advancing past un-synced messages is not.
+ */
+export function shouldAdvanceWatermark(scope: ScopeId | null | undefined): boolean {
+  return scope !== null && scope !== undefined && ADVANCING_SCOPES.includes(scope);
 }
 
 export function watermarkStorageKey(contactUrl: string): string {

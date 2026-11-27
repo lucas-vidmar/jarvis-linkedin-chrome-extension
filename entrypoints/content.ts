@@ -21,6 +21,7 @@ import {
   openScopeDropdown,
 } from '@/content/scope-dropdown';
 import { defaultScope, type ScopeId } from '@/shared/scopes';
+import { shouldAdvanceWatermark } from '@/shared/watermark';
 import { composeJarvisEnvelope } from '@/shared/composer';
 import { filterMessagesByScope } from '@/shared/scope-filter';
 import { setPendingScope, setPendingEnvelope } from '@/content/sync-state';
@@ -69,7 +70,7 @@ function isCurrentThread(contactUrl: string): boolean {
   return detection.kind === 'conversation' && detection.contact.contactUrl === contactUrl;
 }
 
-function runDraftFallback(threadUrl: string, envelope: JarvisEnvelope): void {
+function runDraftFallback(threadUrl: string, envelope: JarvisEnvelope, scope: ScopeId): void {
   if (draftFallbackOpening) return;
   draftFallbackOpening = true;
   openDraftFallback({ contactUrl: threadUrl, envelope })
@@ -88,10 +89,15 @@ function runDraftFallback(threadUrl: string, envelope: JarvisEnvelope): void {
               syncId: crypto.randomUUID(),
               lastMessageFingerprint: envelope.lastMessageFingerprint,
               composedAtEpochMs: envelope.composedAtEpochMs,
+              scope,
             })
               .then(() => {
                 if (!isCurrentThread(threadUrl)) return;
-                showSyncSuccess('Draft confirmed.');
+                showSyncSuccess(
+                  shouldAdvanceWatermark(scope)
+                    ? 'Draft confirmed.'
+                    : 'Draft confirmed. Sync point unchanged for this scope.',
+                );
               })
               .catch(() => {
                 if (!isCurrentThread(threadUrl)) return;
@@ -118,17 +124,21 @@ function runDraftFallback(threadUrl: string, envelope: JarvisEnvelope): void {
     });
 }
 
-function attemptSend(threadUrl: string, envelope: JarvisEnvelope): Promise<void> {
-  return sendSyncEmail({ contactUrl: threadUrl, envelope })
+function attemptSend(threadUrl: string, envelope: JarvisEnvelope, scope: ScopeId): Promise<void> {
+  return sendSyncEmail({ contactUrl: threadUrl, envelope, scope })
     .then((result) => {
       if (!isCurrentThread(threadUrl)) return;
       console.log('[jarvis-sync] sent:', result.messageId);
-      showSyncSuccess('Synced to Zoho.');
+      showSyncSuccess(
+        shouldAdvanceWatermark(scope)
+          ? 'Synced to Zoho.'
+          : 'Synced to Zoho. Sync point unchanged for this scope.',
+      );
     })
     .catch((error: { code?: string; message?: string }) => {
       if (!isCurrentThread(threadUrl)) return;
       if (error?.code === 'AUTH_FAILED') {
-        runDraftFallback(threadUrl, envelope);
+        runDraftFallback(threadUrl, envelope, scope);
         return;
       }
       const reason = failureReasonLabel(error?.code ?? 'SEND_FAILED');
@@ -142,7 +152,7 @@ function attemptSend(threadUrl: string, envelope: JarvisEnvelope): Promise<void>
               return;
             }
             showSyncInProgress('Syncing…');
-            attemptSend(threadUrl, envelope);
+            attemptSend(threadUrl, envelope, scope);
           },
         },
         {
@@ -152,7 +162,7 @@ function attemptSend(threadUrl: string, envelope: JarvisEnvelope): Promise<void>
               dismissSyncNotices();
               return;
             }
-            runDraftFallback(threadUrl, envelope);
+            runDraftFallback(threadUrl, envelope, scope);
           },
         },
       ]);
@@ -242,7 +252,7 @@ function composeAndSend(
     });
     setPendingScope(scope);
     setPendingEnvelope(envelope);
-    return attemptSend(contact.contactUrl, envelope);
+    return attemptSend(contact.contactUrl, envelope, scope);
   })
     .catch((error: { message?: string }) => {
       console.log('[jarvis-sync] send preparation failed:', error?.message ?? '');

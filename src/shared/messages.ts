@@ -1,6 +1,7 @@
 export const GMAIL_SEND_SCOPE = 'https://www.googleapis.com/auth/gmail.send';
 
 import type { JarvisEnvelope } from '@/shared/composer';
+import type { ScopeId } from '@/shared/scopes';
 import type { WatermarkValue } from '@/shared/watermark';
 
 export type RequestType =
@@ -37,6 +38,8 @@ export interface SendSyncEmailRequest extends BaseRequest {
   syncId: string;
   contactUrl: string;
   envelope: JarvisEnvelope;
+  /** Scope the email was composed for; decides whether the watermark advances. */
+  scope: ScopeId;
 }
 
 export interface OpenDraftFallbackRequest extends BaseRequest {
@@ -50,6 +53,8 @@ export interface ConfirmDraftSentRequest extends BaseRequest {
   syncId: string;
   lastMessageFingerprint: string | null;
   composedAtEpochMs: number;
+  /** Scope the draft was composed for; decides whether the watermark advances. */
+  scope: ScopeId;
 }
 
 export interface ReadWatermarkRequest extends BaseRequest {
