@@ -146,6 +146,7 @@ src/
                        watermark, zoho-url, messages, errors, scope-filter
 scripts/
   validate-manifest.mjs  Post-build manifest sanity checks (see CI-ish gate below)
+  extension-id.mjs       Prints the Chrome extension ID implied by manifest.key
 public/icon/           Rocket extension icons (16/32/48/96/128)
 assets/rocket-icon.svg Source of the rocket icon
 ```
@@ -169,6 +170,11 @@ To load it:
 2. Click **Load unpacked** and select `.output/chrome-mv3`.
 3. Sign in to Google from the extension popup (grants `gmail.send`).
 
+The resulting extension ID is fixed at
+`bhnbdlnlepjoeacilhikmoamcgblnmkp` (verify with `npm run extension:id`).
+The Google Cloud OAuth client used for sign-in must be registered for that
+exact ID — see [Extension ID & Google OAuth](#extension-id--google-oauth).
+
 Other commands:
 
 ```bash
@@ -178,7 +184,12 @@ npm run test            # run the unit/DOM test suite (Vitest)
 npm run test:watch
 npm run typecheck       # tsc --noEmit
 npm run validate:manifest  # post-build manifest sanity checks
+npm run extension:id    # print the pinned Chrome extension ID (run after build)
 ```
+
+> The extension's ID is **pinned** by a public key in `wxt.config.ts`, so it is
+> the same on every machine. That matters for Google OAuth — see
+> [Extension ID & Google OAuth](#extension-id--google-oauth).
 
 ## Installing for users
 
@@ -216,6 +227,9 @@ unpacked**, and select the `.output/chrome-mv3` folder.
 
 1. Open the popup (puzzle-piece menu → **Jarvis Sync**) and click
    **Connect with Google** — this grants the `gmail.send` scope used for syncs.
+   If it fails, the Google Cloud OAuth client isn't registered for this
+   extension's ID — see
+   [Symptoms of an ID/OAuth mismatch](#symptoms-of-an-idoauth-mismatch).
 2. (Optional) Set a **Sync recipient** in the popup if syncs shouldn't go to
    `jarvis@agileengine.com`.
 3. Open a LinkedIn conversation and look for **Sync to Jarvis** above the
@@ -236,16 +250,105 @@ There's no auto-update for unpacked extensions. To update:
 - Because the extension isn't in the Web Store, Chrome shows a
   "developer mode extensions" warning on startup. It's harmless — just dismiss
   it.
-- `chrome.identity` OAuth is tied to the extension's Google Cloud client.
-  It works out of the box for a single user signing in with their own Google
-  account, but if you plan to distribute it to other people who will sign in
-  with *their own* accounts, the OAuth client must first be published and
-  verified in Google Cloud Console, or their sign-in will be rejected.
+- `chrome.identity` OAuth is tied to the extension ID, which is now **pinned**
+  (see [Extension ID & Google OAuth](#extension-id--google-oauth)). Unpacked
+  installs used to get a different ID on every machine — derived from the
+  install path — so a single Google Cloud OAuth client could not serve more
+  than one user. The pinned key fixes the ID; the OAuth client still has to be
+  configured for it.
+
+## Extension ID & Google OAuth
+
+Chrome gives an **unpacked** extension an ID derived from its install path, so
+a plain build loaded from two different folders would produce two different
+IDs. `chrome.identity.getAuthToken()` identifies the caller by extension ID,
+and a Google Cloud OAuth client of type **Chrome extension** only accepts one
+ID. Without a pinned ID, every user would need their own OAuth client.
+
+This repo therefore ships a **public** manifest key (`manifest.key` in
+`wxt.config.ts`). The matching private key is **not** committed — the public
+half is all Chrome needs to derive a stable ID. The current ID is:
+
+```
+bhnbdlnlepjoeacilhikmoamcgblnmkp
+```
+
+### Register the OAuth client for the pinned ID
+
+The developer maintaining the Google Cloud project must do this once (and
+again whenever the key/ID changes):
+
+1. Print the ID from a build:
+   ```bash
+   npm run build && npm run extension:id
+   ```
+2. In [Google Cloud Console](https://console.cloud.google.com/apis/credentials),
+   open the project's OAuth client of type **Chrome extension** (create one if
+   it doesn't exist yet). Set its **Application ID / Item ID** to the printed
+   extension ID.
+3. Enable the **Gmail API** for the project and make sure the consent screen
+   includes the `https://www.googleapis.com/auth/gmail.send` scope.
+4. If other people will sign in with their own Google accounts while the app is
+   still in **Testing** mode, add them as **test users**; otherwise publish and
+   verify the app.
+
+You do **not** need to edit Google Cloud to build the extension — only to make
+sign-in work for the ID you build.
+
+### Symptoms of an ID/OAuth mismatch
+
+If the extension ID doesn't match the OAuth client, **Connect with Google**
+fails (typically `invalid_client`, "The OAuth client was not found", or a
+generic `Bad Request`). Check, in order:
+
+- `npm run extension:id` matches the **Application ID** on the OAuth client.
+- The OAuth client type is **Chrome extension** (not "Web application").
+- The Gmail API is enabled and `gmail.send` is on the consent screen.
+- The Google account is a test user if the app isn't published.
+
+As a fallback, the extension opens a pre-filled Gmail draft so a sync can still
+be completed manually, but connecting Google requires a correct client/ID pair.
+
+### Rotating the key (changes the extension ID)
+
+The key can be regenerated for a fresh install base or if the old key is
+retired. A new key produces a **new extension ID**, which requires a matching
+OAuth-client update — users will have to reconnect Google and reload the
+extension.
+
+```bash
+# 1. Generate a private key OUTSIDE the repo and never commit it.
+mkdir -p ~/.jarvis-extension-keys && chmod 700 ~/.jarvis-extension-keys
+openssl genrsa -out ~/.jarvis-extension-keys/jarvis-extension.pem 2048
+chmod 600 ~/.jarvis-extension-keys/jarvis-extension.pem
+
+# 2. Export the public key as DER, base64-encode it (single line).
+openssl rsa -in ~/.jarvis-extension-keys/jarvis-extension.pem \
+  -pubout -outform DER -out ~/.jarvis-extension-keys/jarvis-extension.pub.der
+base64 -i ~/.jarvis-extension-keys/jarvis-extension.pub.der | tr -d '\n'
+```
+
+Put that base64 string in `manifest.key` in `wxt.config.ts` (or set
+`WXT_EXTENSION_KEY` at build time), then run `npm run build` followed by
+`npm run extension:id`, and update the OAuth client's **Application ID** to the
+new ID. Commit only the **public** key.
 
 ## Configuration
 
-`gmail.send` OAuth is configured via `chrome.identity` (the client ID lives in
-`wxt.config.ts`).
+`gmail.send` OAuth is configured via `chrome.identity`. Build-time values can
+be set in a `.env` file (copy `.env.example`); they are read by
+`wxt.config.ts`.
+
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `WXT_GOOGLE_CLIENT_ID` | OAuth client ID written to `manifest.oauth2.client_id` | Client ID pinned in `wxt.config.ts` |
+| `WXT_EXTENSION_KEY` | Base64 DER public key written to `manifest.key`; determines the extension ID | Key pinned in `wxt.config.ts` |
+| `WXT_JARVIS_RECIPIENT` | Factory-default sync recipient (runtime setting wins) | `jarvis@agileengine.com` |
+
+Changing `WXT_EXTENSION_KEY` changes the extension ID, which requires updating
+the Google Cloud OAuth client — see
+[Extension ID & Google OAuth](#extension-id--google-oauth). Never commit a
+private key; only the public key belongs in the build config.
 
 **Sync recipient** — runtime-configurable, no coding or rebuild needed. Open the
 extension popup → **Sync recipient**, enter any email address, and hit **Save**.
@@ -275,7 +378,8 @@ The popup setting always wins over the build-time value at runtime.
 
 `npm run validate:manifest` asserts the things Chrome is picky about that are
 easy to break in a build: the full `gmail.send` scope URI, the `identity`
-permission, and the required host permissions.
+permission, the required host permissions, a non-empty pinned `manifest.key`,
+and a non-empty `oauth2.client_id`.
 
 ## Notes & caveats
 
