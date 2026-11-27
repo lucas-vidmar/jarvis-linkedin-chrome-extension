@@ -16,9 +16,27 @@ if (!manifest.oauth2?.scopes?.includes('https://www.googleapis.com/auth/gmail.se
   );
 }
 
+if (typeof manifest.key !== 'string' || manifest.key.replace(/\s+/g, '').length === 0) {
+  failures.push(
+    'manifest.key must be a non-empty base64 public key so the extension ID stays pinned across installs',
+  );
+}
+
+if (typeof manifest.oauth2?.client_id !== 'string' || manifest.oauth2.client_id.length === 0) {
+  failures.push(
+    `oauth2.client_id must be set (use WXT_GOOGLE_CLIENT_ID or the fallback in wxt.config.ts), got: ${JSON.stringify(manifest.oauth2?.client_id)}`,
+  );
+}
+
 if (!manifest.permissions?.includes('identity')) {
   failures.push(
     `permissions must include "identity" for chrome.identity.getAuthToken, got: ${JSON.stringify(manifest.permissions)}`,
+  );
+}
+
+if (!manifest.permissions?.includes('identity.email')) {
+  failures.push(
+    `permissions must include "identity.email" so chrome.identity.getProfileUserInfo() returns the signed-in email (otherwise the popup's "Authorized as …" line is silently empty), got: ${JSON.stringify(manifest.permissions)}`,
   );
 }
 

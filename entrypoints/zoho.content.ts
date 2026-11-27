@@ -1,5 +1,5 @@
 import { defineContentScript } from 'wxt/utils/define-content-script';
-import { zohoContactUrlToJarvis } from '@/shared/zoho-url';
+import { ZOHO_CRM_ORIGIN_PATTERNS, zohoContactUrlToJarvis } from '@/shared/zoho-url';
 import { syncZohoJarvisLink } from '@/content/zoho-jarvis-button';
 
 const OBSERVER_DEBOUNCE_MS = 250;
@@ -57,7 +57,7 @@ function start(): void {
 }
 
 export default defineContentScript({
-  matches: ['https://crm.zoho.com/*'],
+  matches: [...ZOHO_CRM_ORIGIN_PATTERNS],
   main() {
     if (document.body) {
       start();
