@@ -69,7 +69,7 @@ function isCurrentThread(contactUrl: string): boolean {
   return detection.kind === 'conversation' && detection.contact.contactUrl === contactUrl;
 }
 
-function runDraftFallback(threadUrl: string, envelope: JarvisEnvelope): void {
+function runDraftFallback(threadUrl: string, envelope: JarvisEnvelope, scope: ScopeId): void {
   if (draftFallbackOpening) return;
   draftFallbackOpening = true;
   openDraftFallback({ contactUrl: threadUrl, envelope })
@@ -87,15 +87,24 @@ function runDraftFallback(threadUrl: string, envelope: JarvisEnvelope): void {
               contactUrl: threadUrl,
               syncId: crypto.randomUUID(),
               lastMessageFingerprint: envelope.lastMessageFingerprint,
+              lastMessageTimestampMs: envelope.lastMessageTimestampMs,
               composedAtEpochMs: envelope.composedAtEpochMs,
+              scope,
             })
-              .then(() => {
+              .then((result) => {
                 if (!isCurrentThread(threadUrl)) return;
-                showSyncSuccess('Draft confirmed.');
+                showSyncSuccess(
+                  result.watermarkAdvanced
+                    ? 'Draft confirmed.'
+                    : 'Draft confirmed. Sync point unchanged for this scope.',
+                );
               })
-              .catch(() => {
+              .catch((confirmError: { message?: string }) => {
                 if (!isCurrentThread(threadUrl)) return;
-                showSyncError('Could not confirm the draft. Try again.');
+                showSyncError(
+                  confirmError?.message?.trim() ||
+                    'Could not confirm the draft. Try again.',
+                );
               });
           },
         },
@@ -118,17 +127,29 @@ function runDraftFallback(threadUrl: string, envelope: JarvisEnvelope): void {
     });
 }
 
-function attemptSend(threadUrl: string, envelope: JarvisEnvelope): Promise<void> {
-  return sendSyncEmail({ contactUrl: threadUrl, envelope })
+function attemptSend(threadUrl: string, envelope: JarvisEnvelope, scope: ScopeId): Promise<void> {
+  return sendSyncEmail({ contactUrl: threadUrl, envelope, scope })
     .then((result) => {
       if (!isCurrentThread(threadUrl)) return;
       console.log('[jarvis-sync] sent:', result.messageId);
-      showSyncSuccess('Synced to Zoho.');
+      if (result.watermarkError) {
+        // Gmail accepted the message, but the sync point did not move. Do not
+        // claim otherwise: a retry will re-send these messages.
+        showSyncError(
+          'Sent, but sync progress could not be saved. Re-syncing may resend these messages.',
+        );
+        return;
+      }
+      showSyncSuccess(
+        result.watermarkAdvanced
+          ? 'Synced to Zoho.'
+          : 'Synced to Zoho. Sync point unchanged for this scope.',
+      );
     })
     .catch((error: { code?: string; message?: string }) => {
       if (!isCurrentThread(threadUrl)) return;
       if (error?.code === 'AUTH_FAILED') {
-        runDraftFallback(threadUrl, envelope);
+        runDraftFallback(threadUrl, envelope, scope);
         return;
       }
       const reason = failureReasonLabel(error?.code ?? 'SEND_FAILED');
@@ -142,7 +163,7 @@ function attemptSend(threadUrl: string, envelope: JarvisEnvelope): Promise<void>
               return;
             }
             showSyncInProgress('Syncing…');
-            attemptSend(threadUrl, envelope);
+            attemptSend(threadUrl, envelope, scope);
           },
         },
         {
@@ -152,7 +173,7 @@ function attemptSend(threadUrl: string, envelope: JarvisEnvelope): Promise<void>
               dismissSyncNotices();
               return;
             }
-            runDraftFallback(threadUrl, envelope);
+            runDraftFallback(threadUrl, envelope, scope);
           },
         },
       ]);
@@ -175,6 +196,7 @@ function openDropdownForButton(
         const messages = await extraction;
         return filterMessagesByScope(messages, scope, new Date(), {
           watermarkFingerprint: watermark?.fingerprint ?? null,
+          watermarkTimestampMs: watermark?.lastMessageTimestampMs ?? null,
         }).length;
       };
       openScopeDropdown({
@@ -201,9 +223,16 @@ function openDropdownForButton(
             showSyncError('Could not read the conversation. Try again.');
             return;
           }
-          const freshWatermark = await readWatermark(contact.contactUrl);
+          let freshWatermark;
+          try {
+            freshWatermark = await readWatermark(contact.contactUrl);
+          } catch {
+            showSyncError('Could not read sync progress. Nothing was sent.');
+            return;
+          }
           const messages = filterMessagesByScope(extracted, scope, new Date(), {
             watermarkFingerprint: freshWatermark?.fingerprint ?? null,
+            watermarkTimestampMs: freshWatermark?.lastMessageTimestampMs ?? null,
           });
           return composeAndSend(contact, scope, messages);
         },
@@ -213,8 +242,11 @@ function openDropdownForButton(
       });
     })
     .catch(() => {
-      // The watermark read failed before the dropdown opened; do not show a
-      // dead button with no feedback, but avoid opening a stale dropdown.
+      // A failed watermark read is not a first sync. Keep the dropdown closed
+      // and tell the user instead of silently offering a full re-send.
+      if (isScopeDropdownOpen()) return;
+      if (!button.isConnected) return;
+      showSyncError('Could not read sync progress. Try again.');
     });
 }
 
@@ -242,11 +274,16 @@ function composeAndSend(
     });
     setPendingScope(scope);
     setPendingEnvelope(envelope);
-    return attemptSend(contact.contactUrl, envelope);
+    return attemptSend(contact.contactUrl, envelope, scope);
   })
-    .catch((error: { message?: string }) => {
+    .catch((error: { code?: string; message?: string }) => {
       console.log('[jarvis-sync] send preparation failed:', error?.message ?? '');
-      showSyncError("Couldn't sync — try again.");
+      showSyncError(
+        error?.code === 'STORAGE_FAILED'
+          ? error.message?.trim() ||
+              "Couldn't sync — could not read the saved sync recipient."
+          : "Couldn't sync — try again.",
+      );
     });
 }
 

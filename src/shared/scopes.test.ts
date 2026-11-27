@@ -5,7 +5,7 @@ import {
   isScopeEligible,
   SCOPE_OPTIONS,
 } from '@/shared/scopes';
-import { isValidFingerprint, watermarkStorageKey } from '@/shared/watermark';
+import { isValidFingerprint, shouldAdvanceWatermark, watermarkStorageKey } from '@/shared/watermark';
 
 describe('scopes', () => {
   it('defaultScope preselects since-last-sync with a watermark, else entire-thread', () => {
@@ -57,5 +57,19 @@ describe('shared watermark helpers', () => {
     expect(isValidFingerprint('short')).toBe(false);
     expect(isValidFingerprint(null)).toBe(false);
     expect(isValidFingerprint(undefined)).toBe(false);
+  });
+
+  it('advances the watermark only for boundary-covering scopes', () => {
+    expect(shouldAdvanceWatermark('entire-thread')).toBe(true);
+    expect(shouldAdvanceWatermark('since-last-sync')).toBe(true);
+    expect(shouldAdvanceWatermark('selected')).toBe(false);
+    expect(shouldAdvanceWatermark('last-day')).toBe(false);
+    expect(shouldAdvanceWatermark('last-week')).toBe(false);
+  });
+
+  it('keeps the watermark safe when the scope is missing or unknown', () => {
+    expect(shouldAdvanceWatermark(null)).toBe(false);
+    expect(shouldAdvanceWatermark(undefined)).toBe(false);
+    expect(shouldAdvanceWatermark('nonsense' as never)).toBe(false);
   });
 });

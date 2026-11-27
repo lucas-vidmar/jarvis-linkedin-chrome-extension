@@ -5,8 +5,15 @@ import {
   type PopupRequest,
   type SyncEmailReply,
 } from '@/shared/messages';
-import { advanceWatermark, listWatermarks, readWatermark, resetWatermark } from '@/background/watermark';
-import { readRecipient, saveRecipient } from '@/background/recipient';
+import { advanceWatermarkForScope, listWatermarks, readWatermark, resetWatermark } from '@/background/watermark';
+import {
+  InvalidRecipientError,
+  readRecipient,
+  saveRecipient,
+} from '@/background/recipient';
+import { StorageError, STORAGE_FAILED } from '@/shared/errors';
+import { classifyGmailSendError } from '@/shared/gmail-errors';
+import { buildRawMessage } from '@/shared/email';
 
 const GMAIL_SEND_URL = 'https://gmail.googleapis.com/gmail/v1/users/me/messages/send';
 const GMAIL_SEND_TIMEOUT_MS = 30_000;
@@ -36,80 +43,18 @@ function syncErrorReply(
   return { type: 'SEND_SYNC_EMAIL', requestId, ok: false, error };
 }
 
-function toBase64Url(bytes: Uint8Array): string {
-  let binary = '';
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte);
-  }
-  return btoa(binary)
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
-}
-
-function sanitizeHeaderValue(value: string): string {
-  return value.replace(/[\r\n]+/g, ' ').trim();
-}
-
-function encodeHeaderValue(value: string): string {
-  const ascii = /^[\x00-\x7F]*$/.test(value);
-  if (ascii) return value;
-  const encoded = toBase64Url(new TextEncoder().encode(value));
-  return `=?UTF-8?B?${encoded}?=`;
-}
-
-function buildRawMessage(envelope: { to: string; subject: string; body: string }): string {
-  const headers = [
-    `To: ${sanitizeHeaderValue(envelope.to)}`,
-    `Subject: ${encodeHeaderValue(sanitizeHeaderValue(envelope.subject))}`,
-    `Date: ${new Date().toUTCString()}`,
-    'MIME-Version: 1.0',
-    'Content-Type: text/plain; charset=UTF-8',
-  ].join('\r\n');
-  const raw = `${headers}\r\n\r\n${envelope.body.replace(/\r?\n/g, '\r\n')}`;
-  return toBase64Url(new TextEncoder().encode(raw));
-}
-
-async function classifySendError(
-  status: number,
-  body: string,
-): Promise<{ code: string; message: string; retryable: boolean }> {
-  let gmailReason = '';
-  let gmailStatus = '';
-  try {
-    const parsed = JSON.parse(body) as {
-      error?: { code?: number; message?: string; status?: string };
-    };
-    gmailReason = parsed.error?.message ?? '';
-    gmailStatus = parsed.error?.status ?? '';
-  } catch {
-    // Non-JSON error body; fall through to status-based classification.
-  }
-
-  console.log('[jarvis-sync] gmail send error:', status, gmailStatus, gmailReason);
-
-  if (status === 401 || status === 403) {
-    return {
-      code: 'AUTH_FAILED',
-      message: gmailReason
-        ? `Gmail rejected the send: ${gmailReason}`
-        : 'Google could not authorize the send. Reconnect to sync.',
-      retryable: true,
-    };
-  }
-  if (status === 408 || status === 409 || status === 412 || status === 413 || status === 429) {
-    return { code: 'SEND_FAILED', message: 'Gmail could not send the message. Try again shortly.', retryable: true };
-  }
-  if (status >= 500) {
-    return { code: 'SEND_FAILED', message: 'Gmail could not send the message.', retryable: true };
-  }
-  return { code: 'SEND_FAILED', message: 'The message could not be sent.', retryable: false };
+function storageFailureReply(error: unknown, fallbackMessage: string) {
+  return {
+    code: STORAGE_FAILED,
+    message: error instanceof StorageError ? error.message : fallbackMessage,
+    retryable: true,
+  };
 }
 
 async function sendSyncEmail(
   message: Extract<PopupRequest, { type: 'SEND_SYNC_EMAIL' }>,
 ): Promise<SyncEmailReply> {
-  const { requestId, syncId, contactUrl, envelope } = message;
+  const { requestId, syncId, contactUrl, envelope, scope } = message;
 
   if (inFlightByContact.has(contactUrl)) {
     return syncErrorReply(requestId, {
@@ -173,10 +118,12 @@ async function sendSyncEmail(
 
       if (!response.ok) {
         const errorBody = await response.text();
-        if (response.status === 401 || response.status === 403) {
+        const classification = classifyGmailSendError(response.status, errorBody);
+        console.log('[jarvis-sync] gmail send error:', response.status, classification.code);
+        if (classification.code === 'AUTH_FAILED') {
           await chrome.identity.removeCachedAuthToken({ token }).catch(() => undefined);
         }
-        return syncErrorReply(requestId, await classifySendError(response.status, errorBody));
+        return syncErrorReply(requestId, classification);
       }
 
       const data = (await response.json()) as { id?: string };
@@ -188,13 +135,41 @@ async function sendSyncEmail(
         });
       }
 
-      await advanceWatermark(contactUrl, envelope.lastMessageFingerprint, envelope.composedAtEpochMs);
+      const advance = await advanceWatermarkForScope(
+        scope,
+        contactUrl,
+        envelope.lastMessageFingerprint,
+        envelope.composedAtEpochMs,
+        envelope.lastMessageTimestampMs,
+      );
+
+      if (advance.status === 'failed') {
+        // Gmail already accepted the message. Report the send as successful
+        // but make it explicit that the sync point did not move.
+        return {
+          type: 'SEND_SYNC_EMAIL',
+          requestId,
+          ok: true,
+          data: {
+            messageId: data.id,
+            watermarkAdvanced: false,
+            watermarkError: {
+              code: STORAGE_FAILED,
+              message: advance.error.message,
+              retryable: true,
+            },
+          },
+        };
+      }
 
       return {
         type: 'SEND_SYNC_EMAIL',
         requestId,
         ok: true,
-        data: { messageId: data.id },
+        data: {
+          messageId: data.id,
+          watermarkAdvanced: advance.status === 'advanced',
+        },
       };
     } finally {
       inFlightSyncIds.delete(syncId);
@@ -273,12 +248,12 @@ export default defineBackground(() => {
               data: { watermark },
             });
           })
-          .catch(() => {
+          .catch((error: unknown) => {
             safeReply({
               type: 'READ_WATERMARK',
               requestId: message.requestId,
-              ok: true,
-              data: { watermark: null },
+              ok: false,
+              error: storageFailureReply(error, 'Could not read sync progress.'),
             });
           });
         return true;
@@ -294,16 +269,12 @@ export default defineBackground(() => {
               data: { watermarks },
             });
           })
-          .catch(() => {
+          .catch((error: unknown) => {
             safeReply({
               type: 'LIST_WATERMARKS',
               requestId: message.requestId,
               ok: false,
-              error: {
-                code: 'SEND_FAILED',
-                message: 'Could not load sync history.',
-                retryable: true,
-              },
+              error: storageFailureReply(error, 'Could not load sync history.'),
             });
           });
         return true;
@@ -332,16 +303,12 @@ export default defineBackground(() => {
               data: { reset: true },
             });
           })
-          .catch(() => {
+          .catch((error: unknown) => {
             safeReply({
               type: 'RESET_WATERMARK',
               requestId: message.requestId,
               ok: false,
-              error: {
-                code: 'SEND_FAILED',
-                message: 'Could not reset. Try again.',
-                retryable: true,
-              },
+              error: storageFailureReply(error, 'Could not reset. Try again.'),
             });
           });
         return true;
@@ -357,16 +324,12 @@ export default defineBackground(() => {
               data: state,
             });
           })
-          .catch(() => {
+          .catch((error: unknown) => {
             safeReply({
               type: 'GET_SYNC_RECIPIENT',
               requestId: message.requestId,
               ok: false,
-              error: {
-                code: 'SEND_FAILED',
-                message: 'Could not load the sync recipient.',
-                retryable: true,
-              },
+              error: storageFailureReply(error, 'Could not load the sync recipient.'),
             });
           });
         return true;
@@ -395,16 +358,19 @@ export default defineBackground(() => {
               data: { recipient },
             });
           })
-          .catch(() => {
+          .catch((error: unknown) => {
+            const invalid = error instanceof InvalidRecipientError;
             safeReply({
               type: 'SET_SYNC_RECIPIENT',
               requestId: message.requestId,
               ok: false,
-              error: {
-                code: 'SEND_FAILED',
-                message: 'That email address does not look valid. Try again.',
-                retryable: true,
-              },
+              error: invalid
+                ? {
+                    code: 'INVALID_RECIPIENT',
+                    message: 'That email address does not look valid. Try again.',
+                    retryable: true,
+                  }
+                : storageFailureReply(error, 'Could not save the sync recipient.'),
             });
           });
         return true;
@@ -557,12 +523,18 @@ export default defineBackground(() => {
           message.lastMessageFingerprint === null ||
           (typeof message.lastMessageFingerprint === 'string' &&
             /^[0-9a-f]{64}$/.test(message.lastMessageFingerprint));
+        const lastMessageTimestampMs = message.lastMessageTimestampMs ?? null;
+        const hasValidLastMessageTimestamp =
+          lastMessageTimestampMs === null ||
+          (typeof lastMessageTimestampMs === 'number' &&
+            Number.isFinite(lastMessageTimestampMs));
         if (
           typeof message.contactUrl !== 'string' ||
           typeof message.syncId !== 'string' ||
           typeof message.composedAtEpochMs !== 'number' ||
           !Number.isFinite(message.composedAtEpochMs) ||
-          !hasValidFingerprint
+          !hasValidFingerprint ||
+          !hasValidLastMessageTimestamp
         ) {
           safeReply({
             type: 'CONFIRM_DRAFT_SENT',
@@ -576,20 +548,42 @@ export default defineBackground(() => {
           });
           return false;
         }
-        const replyConfirmed = (): void => {
+        const replyConfirmed = (watermarkAdvanced: boolean): void => {
           console.log('[jarvis-sync] draft confirmed sent:', message.contactUrl, message.syncId);
           safeReply({
             type: 'CONFIRM_DRAFT_SENT',
             requestId: message.requestId,
             ok: true,
-            data: { confirmed: true },
+            data: { confirmed: true, watermarkAdvanced },
           });
         };
-        advanceWatermark(
+        const replyStorageFailure = (): void => {
+          safeReply({
+            type: 'CONFIRM_DRAFT_SENT',
+            requestId: message.requestId,
+            ok: false,
+            error: {
+              code: STORAGE_FAILED,
+              message:
+                'The draft was sent, but sync progress could not be saved. Reload the tab and try again.',
+              retryable: true,
+            },
+          });
+        };
+        advanceWatermarkForScope(
+          message.scope,
           message.contactUrl,
           message.lastMessageFingerprint,
           message.composedAtEpochMs,
-        ).then(replyConfirmed, replyConfirmed);
+          lastMessageTimestampMs,
+        ).then((advance) => {
+          if (advance.status === 'failed') {
+            console.warn('[jarvis-sync] draft watermark advance failed:', advance.error.message);
+            replyStorageFailure();
+            return;
+          }
+          replyConfirmed(advance.status === 'advanced');
+        }, replyStorageFailure);
         return true;
       }
 

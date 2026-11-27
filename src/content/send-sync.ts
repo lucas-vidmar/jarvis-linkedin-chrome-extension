@@ -4,10 +4,12 @@ import type {
   SyncEmailReply,
 } from '@/shared/messages';
 import type { JarvisEnvelope } from '@/shared/composer';
+import type { ScopeId } from '@/shared/scopes';
 
 interface SendSyncEmailArgs {
   contactUrl: string;
   envelope: JarvisEnvelope;
+  scope: ScopeId;
 }
 
 export async function sendSyncEmail(args: SendSyncEmailArgs): Promise<SendSyncEmailResult> {
@@ -22,6 +24,7 @@ export async function sendSyncEmail(args: SendSyncEmailArgs): Promise<SendSyncEm
       syncId,
       contactUrl: args.contactUrl,
       envelope: args.envelope,
+      scope: args.scope,
     })) as SyncEmailReply;
   } catch {
     throw {

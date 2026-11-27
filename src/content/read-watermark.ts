@@ -1,6 +1,7 @@
-import type { ReadWatermarkResult } from '@/shared/messages';
+import type { AppError, ReadWatermarkResult } from '@/shared/messages';
 import { isValidFingerprint } from '@/shared/watermark';
 import type { WatermarkValue } from '@/shared/watermark';
+import { storageAppError } from '@/shared/errors';
 
 export async function readWatermark(contactUrl: string): Promise<WatermarkValue | null> {
   const requestId = crypto.randomUUID();
@@ -10,6 +11,7 @@ export async function readWatermark(contactUrl: string): Promise<WatermarkValue 
     requestId: string;
     ok: boolean;
     data?: ReadWatermarkResult;
+    error?: AppError;
   };
   try {
     reply = (await chrome.runtime.sendMessage({
@@ -18,16 +20,20 @@ export async function readWatermark(contactUrl: string): Promise<WatermarkValue 
       contactUrl,
     })) as typeof reply;
   } catch {
-    return null;
+    throw storageAppError('Could not read sync progress.');
   }
 
   if (!reply || reply.type !== 'READ_WATERMARK' || reply.requestId !== requestId) {
-    return null;
+    throw storageAppError('Unexpected reply while reading sync progress.');
   }
   if (!reply.ok) {
-    return null;
+    throw reply.error ?? storageAppError('Could not read sync progress.');
   }
-  const watermark = reply.data?.watermark ?? null;
+  if (!reply.data) {
+    throw storageAppError('Unexpected reply while reading sync progress.');
+  }
+
+  const watermark = reply.data.watermark;
   if (watermark === null) {
     return null;
   }
@@ -35,7 +41,14 @@ export async function readWatermark(contactUrl: string): Promise<WatermarkValue 
     !isValidFingerprint(watermark.fingerprint) ||
     !Number.isFinite(watermark.syncedAtEpochMs)
   ) {
-    return null;
+    throw storageAppError('Saved sync progress could not be read.');
+  }
+  if (
+    watermark.lastMessageTimestampMs !== undefined &&
+    (typeof watermark.lastMessageTimestampMs !== 'number' ||
+      !Number.isFinite(watermark.lastMessageTimestampMs))
+  ) {
+    throw storageAppError('Saved sync progress could not be read.');
   }
   return watermark;
 }
