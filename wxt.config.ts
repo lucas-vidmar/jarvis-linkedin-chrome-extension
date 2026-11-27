@@ -58,7 +58,9 @@ export default defineConfig({
   manifest: {
     name: 'Jarvis Sync',
     key: extensionKey,
-    permissions: ['identity', 'storage'],
+    // `identity.email` is required for chrome.identity.getProfileUserInfo() to
+    // return the signed-in address shown as "Authorized as …" in the popup.
+    permissions: ['identity', 'identity.email', 'storage'],
     oauth2: {
       scopes: ['https://www.googleapis.com/auth/gmail.send'],
       client_id: googleClientId,

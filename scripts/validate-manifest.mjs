@@ -34,6 +34,12 @@ if (!manifest.permissions?.includes('identity')) {
   );
 }
 
+if (!manifest.permissions?.includes('identity.email')) {
+  failures.push(
+    `permissions must include "identity.email" so chrome.identity.getProfileUserInfo() returns the signed-in email (otherwise the popup's "Authorized as …" line is silently empty), got: ${JSON.stringify(manifest.permissions)}`,
+  );
+}
+
 const requiredHosts = [
   'https://www.linkedin.com/*',
   'https://crm.zoho.com/*',

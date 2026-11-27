@@ -377,9 +377,26 @@ The popup setting always wins over the build-time value at runtime.
   development.
 
 `npm run validate:manifest` asserts the things Chrome is picky about that are
-easy to break in a build: the full `gmail.send` scope URI, the `identity`
-permission, the required host permissions, a non-empty pinned `manifest.key`,
-and a non-empty `oauth2.client_id`.
+easy to break in a build: the full `gmail.send` scope URI, the `identity` and
+`identity.email` permissions, the required host permissions, a non-empty pinned
+`manifest.key`, and a non-empty `oauth2.client_id`.
+
+## Permissions & privacy
+
+| Permission | Why |
+| --- | --- |
+| `identity` | Google sign-in through `chrome.identity.getAuthToken()`, scoped to `gmail.send`. |
+| `identity.email` | Reads the signed-in Chrome profile's email address so the popup can show **Authorized as …**. Without it Chrome returns an empty email even when the account is connected. |
+| `storage` | Persists the sync recipient and the per-conversation watermarks. |
+
+Gmail access is limited to `gmail.send`: the extension can send the sync email
+from your account but it **cannot read your inbox** — no read/list scope is
+requested, and no message content is ever fetched back.
+
+`chrome.identity.getProfileUserInfo()` can still return an empty email — for
+example when the Chrome profile has no Google account signed in, or the address
+is otherwise unavailable. That only hides the **Authorized as …** line: the
+popup still reports the connection state and syncing works normally.
 
 ## Notes & caveats
 
@@ -390,8 +407,10 @@ and a non-empty `oauth2.client_id`.
 - The Zoho button copies the "Send Email" button's computed styles and overrides
   them with the Jarvis orange — Zoho's gradient background is stripped so the
   color holds at rest, hover, and pressed.
-- Only `gmail.send` is requested — the extension reads nothing from your inbox
-  and can't read messages back.
+- `identity` and `identity.email` are requested so sign-in works and the popup
+  can label the authorized Google account; Gmail access is limited to
+  `gmail.send`, so the extension reads nothing from your inbox and can't read
+  messages back.
 
 ## License
 
