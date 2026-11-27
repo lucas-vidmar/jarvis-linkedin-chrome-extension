@@ -1,14 +1,15 @@
 export const BOUNCED = 'BOUNCED';
 
-export type FailureReasonLabel = 'OAuth' | 'Send error' | 'Bounced' | 'Sync error';
+export type FailureReasonLabel = 'OAuth' | 'Send error' | 'Rate limit' | 'Bounced' | 'Sync error';
 
 export function failureReasonLabel(code: string): FailureReasonLabel {
   switch (code) {
     case 'AUTH_FAILED':
       return 'OAuth';
     case 'SEND_FAILED':
-    case 'RATE_LIMITED':
       return 'Send error';
+    case 'RATE_LIMITED':
+      return 'Rate limit';
     case BOUNCED:
       return 'Bounced';
     default:
