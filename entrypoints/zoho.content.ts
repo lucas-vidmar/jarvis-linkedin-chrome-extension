@@ -1,12 +1,14 @@
 import { defineContentScript } from 'wxt/utils/define-content-script';
 import { ZOHO_CRM_ORIGIN_PATTERNS, zohoContactUrlToJarvis } from '@/shared/zoho-url';
 import { syncZohoJarvisLink } from '@/content/zoho-jarvis-button';
+import { watchUrlChanges, type UrlWatchTeardown } from '@/content/url-watch';
 
 const OBSERVER_DEBOUNCE_MS = 250;
 const OBSERVER_MAX_WAIT_MS = 750;
 
 let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 let maxWaitTimer: ReturnType<typeof setTimeout> | undefined;
+let stopUrlWatch: UrlWatchTeardown | undefined;
 
 function applyDetection(): void {
   const jarvisUrl = zohoContactUrlToJarvis(document.location.href);
@@ -35,25 +37,24 @@ function scheduleDetection(): void {
 
 function start(): void {
   applyDetection();
-  new MutationObserver(scheduleDetection).observe(document.body, {
+  const observerRoot = document.documentElement ?? document.body;
+  new MutationObserver(scheduleDetection).observe(observerRoot, {
     childList: true,
     subtree: true,
     characterData: true,
     attributes: true,
     attributeFilter: ['class', 'title', 'aria-label'],
   });
-  window.addEventListener('popstate', scheduleDetection);
-  window.addEventListener('hashchange', scheduleDetection);
-  const nativePushState = history.pushState.bind(history);
-  const nativeReplaceState = history.replaceState.bind(history);
-  history.pushState = (data, unused, url) => {
-    nativePushState(data, unused, url);
-    scheduleDetection();
-  };
-  history.replaceState = (data, unused, url) => {
-    nativeReplaceState(data, unused, url);
-    scheduleDetection();
-  };
+  stopUrlWatch?.();
+  stopUrlWatch = watchUrlChanges(() => scheduleDetection());
+  window.addEventListener(
+    'pagehide',
+    () => {
+      stopUrlWatch?.();
+      stopUrlWatch = undefined;
+    },
+    { once: true },
+  );
 }
 
 export default defineContentScript({

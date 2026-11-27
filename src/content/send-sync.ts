@@ -5,6 +5,13 @@ import type {
 } from '@/shared/messages';
 import type { JarvisEnvelope } from '@/shared/composer';
 import type { ScopeId } from '@/shared/scopes';
+import { TimeoutError, withTimeout } from '@/content/with-timeout';
+
+/**
+ * Slightly above the background's 30s Gmail send timeout, so the background
+ * still gets to report its own failure/result first.
+ */
+export const SEND_SYNC_TIMEOUT_MS = 35_000;
 
 interface SendSyncEmailArgs {
   contactUrl: string;
@@ -18,15 +25,25 @@ export async function sendSyncEmail(args: SendSyncEmailArgs): Promise<SendSyncEm
 
   let reply: SyncEmailReply;
   try {
-    reply = (await chrome.runtime.sendMessage({
-      type: 'SEND_SYNC_EMAIL',
-      requestId,
-      syncId,
-      contactUrl: args.contactUrl,
-      envelope: args.envelope,
-      scope: args.scope,
-    })) as SyncEmailReply;
-  } catch {
+    reply = (await withTimeout(
+      chrome.runtime.sendMessage({
+        type: 'SEND_SYNC_EMAIL',
+        requestId,
+        syncId,
+        contactUrl: args.contactUrl,
+        envelope: args.envelope,
+        scope: args.scope,
+      }) as Promise<SyncEmailReply>,
+      SEND_SYNC_TIMEOUT_MS,
+    )) as SyncEmailReply;
+  } catch (error) {
+    if (error instanceof TimeoutError) {
+      throw {
+        code: 'SEND_FAILED',
+        message: 'Timed out waiting for the extension background. Try again.',
+        retryable: true,
+      } satisfies AppError;
+    }
     throw {
       code: 'SEND_FAILED',
       message: 'Could not reach the extension background.',

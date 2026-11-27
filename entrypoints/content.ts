@@ -39,6 +39,7 @@ import { showSyncError, showSyncInProgress, showSyncPrompt, showSyncSuccess, dis
 import { failureReasonLabel } from '@/shared/errors';
 import type { ComposerMessage, JarvisEnvelope } from '@/shared/composer';
 import { resolveCleanProfileUrl } from '@/content/resolve-profile-url';
+import { watchUrlChanges, type UrlWatchTeardown } from '@/content/url-watch';
 
 const OBSERVER_DEBOUNCE_MS = 250;
 const OBSERVER_MAX_WAIT_MS = 750;
@@ -56,6 +57,7 @@ let consecutiveMatches = 0;
 let consecutiveMisses = 0;
 let lastPathname: string | null = null;
 let draftFallbackOpening = false;
+let stopUrlWatch: UrlWatchTeardown | undefined;
 
 function detectionKeyFor(pathname: string, contactUrl: string): string {
   return `${pathname}:${contactUrl}`;
@@ -431,7 +433,6 @@ function applyDetection(): void {
 
 function scheduleDetection(): void {
   mutationSinceLastPass = true;
-  const now = Date.now();
   if (debounceTimer !== undefined) {
     clearTimeout(debounceTimer);
   }
@@ -443,7 +444,9 @@ function scheduleDetection(): void {
   if (maxWaitTimer === undefined) {
     maxWaitTimer = setTimeout(() => {
       maxWaitTimer = undefined;
-      if (now - lastCountedAt >= OBSERVER_MAX_WAIT_MS) {
+      // Compute the time inside the callback: a value captured when the timer
+      // was scheduled is already stale by the time it fires.
+      if (Date.now() - lastCountedAt >= OBSERVER_MAX_WAIT_MS) {
         applyDetection();
       }
     }, OBSERVER_MAX_WAIT_MS);
@@ -453,13 +456,24 @@ function scheduleDetection(): void {
 function start(): void {
   lastPathname = document.location.pathname;
   applyDetection();
-  new MutationObserver(scheduleDetection).observe(document.body, {
+  const observerRoot = document.documentElement ?? document.body;
+  new MutationObserver(scheduleDetection).observe(observerRoot, {
     childList: true,
     subtree: true,
     characterData: true,
     attributes: true,
     attributeFilter: ['href', 'class', 'aria-hidden', 'src', 'alt', 'style', 'hidden'],
   });
+  stopUrlWatch?.();
+  stopUrlWatch = watchUrlChanges(() => scheduleDetection());
+  window.addEventListener(
+    'pagehide',
+    () => {
+      stopUrlWatch?.();
+      stopUrlWatch = undefined;
+    },
+    { once: true },
+  );
 }
 
 export default defineContentScript({
